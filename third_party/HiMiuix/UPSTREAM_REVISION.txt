@@ -1,0 +1,4 @@
+Project: https://github.com/HChenX/HiMiuix
+Upstream revision: 77fe220d8108109bca764e6dee0e71f0e9685b9d
+License: LGPL-2.1 (see LICENSE)
+Vendored as a Gradle subproject; application code in this project does not modify the HiMiuix library source files.

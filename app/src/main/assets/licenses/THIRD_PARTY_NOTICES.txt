@@ -1,0 +1,19 @@
+穗账 Android 使用的第三方组件
+
+HiMiuix
+上游：https://github.com/HChenX/HiMiuix
+本应用使用 MiuixListView 选择组件。许可：GNU LGPL 2.1。完整许可证：licenses/HiMiuix-LICENSE.txt。
+完整对应库源代码包含在随应用交付的 xiji-android-source.zip 的 third_party/HiMiuix/ 目录；锁定上游提交：77fe220d8108109bca764e6dee0e71f0e9685b9d。
+
+Material Components for Android 1.14.0
+Maven 坐标：com.google.android.material:material:1.14.0
+上游源码：https://github.com/material-components/material-components-android/tree/1.14.0
+许可：Apache License 2.0。完整许可证：licenses/MaterialComponentsAndroid-LICENSE.txt。
+
+Google ML Kit 中文文本识别 16.0.1
+Maven 坐标：com.google.mlkit:text-recognition-chinese:16.0.1（bundled model）。
+官方 Android 文档：https://developers.google.com/ml-kit/vision/text-recognition/v2/android
+ML Kit 条款与隐私：https://developers.google.com/ml-kit/terms
+Google 文档说明图像/文字推理在设备上完成，不将输入图像与结果文本发送到 Google 服务器；SDK 仍可能联系 Google 服务并发送使用/性能指标。请遵守 ML Kit 服务条款与适用隐私披露要求。穗账通过系统照片选择器本机读取图像，不向穗账服务器上传截图。
+
+上述组件由各自作者/供应方按其许可或服务条款提供；穗账保留上游版权、许可与条款信息。

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="ds_space_micro">4dp</dimen>
+    <dimen name="ds_space_compact">8dp</dimen>
+    <dimen name="ds_space_component">12dp</dimen>
+    <dimen name="ds_space_section">16dp</dimen>
+    <dimen name="ds_page_gutter">18dp</dimen>
+    <dimen name="ds_header_gutter">20dp</dimen>
+    <dimen name="ds_card_inset_horizontal">16dp</dimen>
+    <dimen name="ds_card_inset_vertical">14dp</dimen>
+    <dimen name="ds_compact_card_inset_vertical">12dp</dimen>
+    <dimen name="ds_hero_inset_horizontal">20dp</dimen>
+    <dimen name="ds_hero_inset_vertical">18dp</dimen>
+    <dimen name="ds_card_radius">18dp</dimen>
+    <dimen name="ds_hero_radius">24dp</dimen>
+    <dimen name="ds_control_radius">14dp</dimen>
+    <dimen name="ds_control_group_radius">16dp</dimen>
+    <dimen name="ds_filter_pill_radius">24dp</dimen>
+    <dimen name="ds_event_badge_radius">12dp</dimen>
+    <dimen name="ds_market_badge_radius">15dp</dimen>
+    <dimen name="ds_calendar_cell_radius">12dp</dimen>
+    <dimen name="ds_card_stroke_width">1dp</dimen>
+    <dimen name="ds_card_elevation">1dp</dimen>
+    <dimen name="ds_navigation_elevation">3dp</dimen>
+    <dimen name="ds_touch_target_min">48dp</dimen>
+    <dimen name="ds_type_brand">24sp</dimen>
+    <dimen name="ds_type_page_title">24sp</dimen>
+    <dimen name="ds_type_section_title">16sp</dimen>
+    <dimen name="ds_type_hero_metric">22sp</dimen>
+    <dimen name="ds_type_data_value">14sp</dimen>
+    <dimen name="ds_type_button">14sp</dimen>
+    <dimen name="ds_type_body">14sp</dimen>
+    <dimen name="ds_type_secondary">12sp</dimen>
+    <dimen name="ds_type_metadata">11sp</dimen>
+    <dimen name="ds_type_calendar_mark">9sp</dimen>
+</resources>

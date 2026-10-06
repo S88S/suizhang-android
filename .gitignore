@@ -1,0 +1,16 @@
+# Android / Gradle local state
+.gradle/
+**/.gradle/
+local.properties
+**/build/
+.idea/
+*.iml
+.DS_Store
+
+# Build outputs and local delivery material
+*.apk
+*.aab
+*.zip
+*.log
+/delivery/
+**/screenshot-holdings-*.json

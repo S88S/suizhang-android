@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="app_background">#111815</color>
+    <color name="app_surface">#1B2420</color>
+    <color name="app_on_surface">#E4ECE6</color>
+    <color name="app_on_surface_variant">#BBC7BF</color>
+    <color name="app_primary">#9BD2B6</color>
+    <color name="app_on_primary">#073B2E</color>
+    <color name="app_primary_container">#15372F</color>
+    <color name="app_on_primary_container">#D5EBDD</color>
+    <color name="app_secondary">#B6DCC8</color>
+    <color name="app_on_secondary">#12382B</color>
+    <color name="app_secondary_container">#29463A</color>
+    <color name="app_on_secondary_container">#D9EFE1</color>
+    <color name="app_error">#FFB4AB</color>
+    <color name="app_outline">#97A79D</color>
+    <color name="app_outline_variant">#3C4A42</color>
+    <color name="app_hero_surface">#15372F</color>
+    <color name="app_hero_on_surface">#F5FBF6</color>
+    <color name="app_hero_muted">#C4DCCE</color>
+    <color name="app_progress_track">#34433B</color>
+    <color name="app_market_up">#FF7777</color>
+    <color name="app_market_down">#67D59A</color>
+    <color name="app_calendar_record_date">#8BC8EF</color>
+    <color name="app_calendar_ex_date">#FFB4AB</color>
+    <color name="app_calendar_pay_date">#83D0A6</color>
+    <color name="app_calendar_received">#B6DCC8</color>
+    <color name="app_calendar_estimated">#F2C66D</color>
+</resources>

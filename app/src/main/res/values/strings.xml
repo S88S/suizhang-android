@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">穗账</string>
+    <string name="dividend_preview">本期税前 %1$s · 税后估算 %2$s</string>
+    <string name="nav_home">总览</string>
+    <string name="nav_holdings">持仓</string>
+    <string name="nav_calendar">日历</string>
+    <string name="nav_more">更多</string>
+</resources>
