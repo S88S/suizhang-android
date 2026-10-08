@@ -10,6 +10,11 @@ Maven 坐标：com.google.android.material:material:1.14.0
 上游源码：https://github.com/material-components/material-components-android/tree/1.14.0
 许可：Apache License 2.0。完整许可证：licenses/MaterialComponentsAndroid-LICENSE.txt。
 
+Material Icons（本地矢量图）
+上游：https://github.com/material-icons/material-icons
+资源：info、calendar_view_month、chevron_left、chevron_right、today、refresh、edit_note、expand_more、account_balance_wallet；信息图标上游提交：af0ed9c0e1276bad43c4d6ca8e8aaa283e425195。
+修改：转换为可染色的 Android VectorDrawable，放在 app/src/main/res/drawable/ 并由 Material Views 本地调用。许可：Apache License 2.0；完整许可证：licenses/MaterialIcons-LICENSE.txt。
+
 Google ML Kit 中文文本识别 16.0.1
 Maven 坐标：com.google.mlkit:text-recognition-chinese:16.0.1（bundled model）。
 官方 Android 文档：https://developers.google.com/ml-kit/vision/text-recognition/v2/android
@@ -17,3 +22,9 @@ ML Kit 条款与隐私：https://developers.google.com/ml-kit/terms
 Google 文档说明图像/文字推理在设备上完成，不将输入图像与结果文本发送到 Google 服务器；SDK 仍可能联系 Google 服务并发送使用/性能指标。请遵守 ML Kit 服务条款与适用隐私披露要求。穗账通过系统照片选择器本机读取图像，不向穗账服务器上传截图。
 
 上述组件由各自作者/供应方按其许可或服务条款提供；穗账保留上游版权、许可与条款信息。
+
+Noto Sans SC Regular（简体中文静态字重）
+上游：https://github.com/notofonts/noto-cjk/blob/main/Sans/SubsetOTF/SC/NotoSansSC-Regular.otf
+许可：SIL Open Font License 1.1，允许随应用分发，不得单独出售。完整许可：licenses/NotoSansSC-OFL.txt。字体已本地嵌入，应用运行时不访问字体 CDN。
+
+HiMiuix MiuixCardView 与 MiuixListView 组件遵循 LGPL-2.1，完整许可：licenses/HiMiuix-LICENSE.txt；本应用同时使用 Material 3 按钮、表单和底部导航。

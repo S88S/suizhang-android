@@ -19,7 +19,7 @@ final class CalendarQuery {
     static MonthQuery forMonth(long accountId, String month) {
         String safeMonth = month == null ? "" : month.trim();
         StringBuilder sql = new StringBuilder(
-                "SELECT d.*,h.name AS holding_name,h.code AS holding_code,h.tax_rate AS holding_tax_rate,h.market AS holding_market,a.name AS account_name " +
+                "SELECT d.*,h.name AS holding_name,h.code AS holding_code,h.tax_rate AS holding_tax_rate,h.market AS holding_market,h.tax_mode AS holding_tax_mode,h.quantity AS holding_quantity,a.name AS account_name " +
                 "FROM dividends d JOIN holdings h ON h._id=d.holding_id JOIN accounts a ON a._id=d.account_id " +
                 "WHERE (substr(d.pay_date,1,7)=? OR substr(COALESCE(d.record_date,''),1,7)=? OR substr(COALESCE(d.ex_date,''),1,7)=?)");
         ArrayList<String> args = new ArrayList<>();

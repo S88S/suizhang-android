@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SQLite persistence regression using the actual schema-3 holdings DDL."""
+"""SQLite persistence regression using the actual schema-4 holdings DDL."""
 from pathlib import Path
 import json
 import re
@@ -11,7 +11,7 @@ database_source = (root / "app/src/main/java/cn/suizhang/ledger/LedgerDatabase.j
 main_source = (root / "app/src/main/java/cn/suizhang/ledger/MainActivity.java").read_text(encoding="utf-8")
 match = re.search(r'db\.execSQL\("(CREATE TABLE holdings [^\"]+)"\);', database_source)
 if not match:
-    raise AssertionError("未能提取 schema-3 holdings DDL")
+    raise AssertionError("未能提取 schema-4 holdings DDL")
 holdings_ddl = match.group(1)
 if 'cv.put("annual_dividend_per_unit", annualDividendPerUnit)' not in database_source:
     raise AssertionError("生产 saveHolding 未保存 annual_dividend_per_unit")
@@ -26,6 +26,8 @@ def require(label, condition):
 with tempfile.NamedTemporaryFile(suffix=".sqlite") as file:
     conn = sqlite3.connect(file.name)
     conn.execute(holdings_ddl)
+    holding_columns = {row[1] for row in conn.execute("PRAGMA table_info(holdings)")}
+    require("成本算法字段有加权平均兼容默认值", "cost_method" in holding_columns)
     conn.execute("CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
     conn.execute("INSERT INTO holdings(name,code,market,currency,quantity,cost,account_id,created_at,annual_dividend_per_unit) VALUES(?,?,?,?,?,?,?,?,?)",
                  ("测试标的", "600519", "A股", "CNY", 125, 100, 1, "2026-10-04T00:00:00Z", .8))
@@ -47,4 +49,4 @@ with tempfile.NamedTemporaryFile(suffix=".sqlite") as file:
     require("关闭再打开后每份金额与年总额仍正确", saved == (150.0, .8) and abs(saved[0] * saved[1] - 120) < 1e-9)
     require("重开后历史来源、窗口和更新时间可恢复", reopened_meta["source"] == "historical_estimate" and reopened_meta["years"] == 3 and reopened_meta["updated_at"] > 0)
     reopened.close()
-print("通过：SQLite schema-3 保存/编辑/重开分红预测持久化回归")
+print("通过：SQLite schema-4 保存/编辑/重开分红预测持久化回归")

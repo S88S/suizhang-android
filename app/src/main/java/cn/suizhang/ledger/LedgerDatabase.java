@@ -11,6 +11,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -21,7 +22,7 @@ import java.util.Set;
 
 final class LedgerDatabase extends SQLiteOpenHelper {
     private static final String DB_NAME = "suizhang-ledger.db";
-    private static final int DB_VERSION = 3;
+    private static final int DB_VERSION = 4;
 
     LedgerDatabase(Context context) { super(context, DB_NAME, null, DB_VERSION); }
 
@@ -36,8 +37,8 @@ final class LedgerDatabase extends SQLiteOpenHelper {
 
     private void createCore(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE accounts (_id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, created_at TEXT NOT NULL)");
-        db.execSQL("CREATE TABLE holdings (_id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, code TEXT, market TEXT NOT NULL, currency TEXT NOT NULL, quantity REAL NOT NULL, cost REAL NOT NULL, account_id INTEGER NOT NULL, created_at TEXT NOT NULL, annual_dividend_per_unit REAL NOT NULL DEFAULT 0, tax_rate REAL NOT NULL DEFAULT 0.10, opened_on TEXT NOT NULL DEFAULT '', initial_quantity REAL NOT NULL DEFAULT 0, tax_mode TEXT NOT NULL DEFAULT 'manual')");
-        db.execSQL("CREATE TABLE dividends (_id INTEGER PRIMARY KEY AUTOINCREMENT, holding_id INTEGER NOT NULL, account_id INTEGER NOT NULL, amount_per_share REAL NOT NULL, total REAL NOT NULL, currency TEXT NOT NULL, record_date TEXT, ex_date TEXT, pay_date TEXT NOT NULL, status TEXT NOT NULL, note TEXT, created_at TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'manual', source_key TEXT, data_class TEXT NOT NULL DEFAULT 'manual', record_quantity REAL NOT NULL DEFAULT 0, pay_date_estimated INTEGER NOT NULL DEFAULT 0, tax_rate REAL NOT NULL DEFAULT 0, tax_known INTEGER NOT NULL DEFAULT 0)");
+        db.execSQL("CREATE TABLE holdings (_id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, code TEXT, market TEXT NOT NULL, currency TEXT NOT NULL, quantity REAL NOT NULL, cost REAL NOT NULL, account_id INTEGER NOT NULL, created_at TEXT NOT NULL, annual_dividend_per_unit REAL NOT NULL DEFAULT 0, tax_rate REAL NOT NULL DEFAULT 0.10, opened_on TEXT NOT NULL DEFAULT '', initial_quantity REAL NOT NULL DEFAULT 0, tax_mode TEXT NOT NULL DEFAULT 'manual', cost_method TEXT NOT NULL DEFAULT 'weighted_average')");
+        db.execSQL("CREATE TABLE dividends (_id INTEGER PRIMARY KEY AUTOINCREMENT, holding_id INTEGER NOT NULL, account_id INTEGER NOT NULL, amount_per_share REAL NOT NULL, total REAL NOT NULL, currency TEXT NOT NULL, record_date TEXT, ex_date TEXT, pay_date TEXT NOT NULL, status TEXT NOT NULL, note TEXT, created_at TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'manual', source_key TEXT, data_class TEXT NOT NULL DEFAULT 'manual', record_quantity REAL NOT NULL DEFAULT 0, pay_date_estimated INTEGER NOT NULL DEFAULT 0, tax_rate REAL NOT NULL DEFAULT 0, tax_known INTEGER NOT NULL DEFAULT 0, received_amount REAL)");
         db.execSQL("CREATE TABLE transactions (_id INTEGER PRIMARY KEY AUTOINCREMENT, holding_id INTEGER NOT NULL, account_id INTEGER NOT NULL, side TEXT NOT NULL, trade_date TEXT NOT NULL, quantity REAL NOT NULL, price REAL NOT NULL, fees REAL NOT NULL, note TEXT, created_at TEXT NOT NULL)");
         db.execSQL("CREATE INDEX idx_dividends_paydate ON dividends(pay_date)");
         db.execSQL("CREATE INDEX idx_dividends_recorddate ON dividends(record_date)");
@@ -106,6 +107,11 @@ final class LedgerDatabase extends SQLiteOpenHelper {
             db.execSQL("CREATE INDEX IF NOT EXISTS idx_dividends_exdate ON dividends(ex_date)");
             db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS idx_dividends_source_key ON dividends(source_key) WHERE source_key IS NOT NULL");
         }
+        if (oldVersion < 4) {
+            // Existing balances are an untouched opening checkpoint; the selected method applies forward.
+            db.execSQL("ALTER TABLE holdings ADD COLUMN cost_method TEXT NOT NULL DEFAULT 'weighted_average'");
+            db.execSQL("ALTER TABLE dividends ADD COLUMN received_amount REAL");
+        }
     }
 
     JSONArray accounts() { return query("SELECT _id,name,created_at FROM accounts ORDER BY _id", null); }
@@ -125,24 +131,42 @@ final class LedgerDatabase extends SQLiteOpenHelper {
         return query(sql + " ORDER BY d.pay_date", new String[]{yearValue});
     }
     JSONArray incomeSummary(long accountId, int year) {
-        String sql = "SELECT d.currency,d.status,SUM(d.total) AS total,COUNT(*) AS count FROM dividends d WHERE substr(d.pay_date,1,4)=?";
+        String sql = "SELECT d.currency,d.status,SUM(CASE WHEN d.status='received' THEN COALESCE(d.received_amount,d.total) ELSE d.total END) AS total,COUNT(*) AS count FROM dividends d WHERE substr(d.pay_date,1,4)=?";
         if (accountId > 0) return query(sql + " AND d.account_id=? GROUP BY d.currency,d.status ORDER BY d.currency,d.status", new String[]{String.valueOf(year), String.valueOf(accountId)});
         return query(sql + " GROUP BY d.currency,d.status ORDER BY d.currency,d.status", new String[]{String.valueOf(year)});
     }
     JSONArray receivedAllTime(long accountId) {
-        String sql = "SELECT currency,SUM(total) AS total,COUNT(*) AS count FROM dividends WHERE status='received'";
+        String sql = "SELECT currency,SUM(COALESCE(received_amount,total)) AS total,COUNT(*) AS count FROM dividends WHERE status='received'";
         if (accountId > 0) return query(sql + " AND account_id=? GROUP BY currency ORDER BY currency", new String[]{String.valueOf(accountId)});
         return query(sql + " GROUP BY currency ORDER BY currency", null);
     }
     JSONArray nextDividends(long accountId, String today, int limit) {
-        String sql = "SELECT d.*,h.name AS holding_name,h.code AS holding_code,h.tax_rate AS holding_tax_rate FROM dividends d JOIN holdings h ON h._id=d.holding_id WHERE d.pay_date>=? AND d.status='expected'";
+        String sql = "SELECT d.*,h.name AS holding_name,h.code AS holding_code,h.tax_rate AS holding_tax_rate,h.market AS holding_market,h.tax_mode AS holding_tax_mode,h.quantity AS holding_quantity FROM dividends d JOIN holdings h ON h._id=d.holding_id WHERE d.pay_date>=? AND d.status='expected'";
         if (accountId > 0) return query(sql + " AND d.account_id=? ORDER BY d.pay_date LIMIT " + Math.max(1, limit), new String[]{today, String.valueOf(accountId)});
         return query(sql + " ORDER BY d.pay_date LIMIT " + Math.max(1, limit), new String[]{today});
+    }
+    JSONArray announcedDividends(long accountId, String today) {
+        String sql = "SELECT d.*,h.name AS holding_name,h.code AS holding_code FROM dividends d JOIN holdings h ON h._id=d.holding_id WHERE d.pay_date>=? AND d.status='expected' AND d.data_class='announced'";
+        if (accountId > 0) return query(sql + " AND d.account_id=? ORDER BY d.pay_date", new String[]{today, String.valueOf(accountId)});
+        return query(sql + " ORDER BY d.pay_date", new String[]{today});
     }
     JSONArray transactions(long accountId, int limit) {
         String sql = "SELECT t.*,h.name AS holding_name,h.code AS holding_code FROM transactions t JOIN holdings h ON h._id=t.holding_id";
         if (accountId > 0) return query(sql + " WHERE t.account_id=? ORDER BY t.trade_date DESC,t._id DESC LIMIT " + Math.max(1, limit), new String[]{String.valueOf(accountId)});
         return query(sql + " ORDER BY t.trade_date DESC,t._id DESC LIMIT " + Math.max(1, limit), null);
+    }
+    String firstPurchaseDate(long holdingId) {
+        String openedOn = "";
+        try (Cursor c = getReadableDatabase().rawQuery("SELECT opened_on FROM holdings WHERE _id=?", new String[]{String.valueOf(holdingId)})) {
+            if (c.moveToFirst() && c.getString(0) != null) openedOn = c.getString(0);
+        }
+        String firstTrade = "";
+        try (Cursor c = getReadableDatabase().rawQuery("SELECT MIN(trade_date) FROM transactions WHERE holding_id=? AND side='买入'", new String[]{String.valueOf(holdingId)})) {
+            if (c.moveToFirst() && c.getString(0) != null) firstTrade = c.getString(0);
+        }
+        if (openedOn.isEmpty()) return firstTrade;
+        if (firstTrade.isEmpty()) return openedOn;
+        return openedOn.compareTo(firstTrade) <= 0 ? openedOn : firstTrade;
     }
     JSONArray goals() { return query("SELECT * FROM expense_goals ORDER BY _id", null); }
     JSONArray assetIndex(String search) {
@@ -156,11 +180,12 @@ final class LedgerDatabase extends SQLiteOpenHelper {
     }
     long saveHolding(long id, String name, String code, String market, String currency, double quantity,
                      double cost, double annualDividendPerUnit, double taxRate, long accountId,
-                     String openedOn, String taxMode) {
+                     String openedOn, String taxMode, String costMethod) {
         ContentValues cv = new ContentValues(); cv.put("name", name.trim()); cv.put("code", code.trim()); cv.put("market", market);
         cv.put("currency", currency); cv.put("quantity", quantity); cv.put("cost", cost);
         cv.put("annual_dividend_per_unit", annualDividendPerUnit); cv.put("tax_rate", taxRate); cv.put("account_id", accountId);
         cv.put("opened_on", openedOn == null ? "" : openedOn); cv.put("tax_mode", taxMode == null ? "auto" : taxMode);
+        cv.put("cost_method", costMethod == null ? FinanceMath.COST_WEIGHTED_AVERAGE : costMethod);
         if (id == 0) {
             cv.put("created_at", Instant.now().toString());
             cv.put("initial_quantity", quantity);
@@ -200,7 +225,19 @@ final class LedgerDatabase extends SQLiteOpenHelper {
         return getWritableDatabase().update("holdings", cv, "_id=? AND code=? AND market=?",
                 new String[]{String.valueOf(id), code.trim(), market}) > 0;
     }
-    void markDividendReceived(long id) { ContentValues cv = new ContentValues(); cv.put("status", "received"); getWritableDatabase().update("dividends", cv, "_id=?", new String[]{String.valueOf(id)}); }
+    void markDividendReceived(long id, Double actualReceivedAmount) {
+        SQLiteDatabase db = getWritableDatabase(); long holdingId = 0; boolean hadAmount = false; double oldAmount = 0d;
+        try (Cursor c = db.rawQuery("SELECT holding_id,received_amount FROM dividends WHERE _id=?", new String[]{String.valueOf(id)})) {
+            if (!c.moveToFirst()) return; holdingId = c.getLong(0); hadAmount = !c.isNull(1); if (hadAmount) oldAmount = c.getDouble(1);
+        }
+        ContentValues cv = new ContentValues(); cv.put("status", "received");
+        if (actualReceivedAmount != null) {
+            if (!Double.isFinite(actualReceivedAmount) || actualReceivedAmount < 0d) throw new IllegalArgumentException("实际到账金额不合法");
+            cv.put("received_amount", actualReceivedAmount);
+        }
+        db.update("dividends", cv, "_id=?", new String[]{String.valueOf(id)});
+        if (actualReceivedAmount != null) adjustCostForDividend(db, holdingId, actualReceivedAmount - (hadAmount ? oldAmount : 0d));
+    }
     void deleteHolding(long id) {
         SQLiteDatabase db = getWritableDatabase(); db.beginTransaction();
         try { db.delete("dividends", "holding_id=?", new String[]{String.valueOf(id)}); db.delete("transactions", "holding_id=?", new String[]{String.valueOf(id)}); db.delete("holdings", "_id=?", new String[]{String.valueOf(id)}); db.delete("app_settings", "key=?", new String[]{"dividend_forecast_" + id}); db.setTransactionSuccessful(); }
@@ -208,13 +245,28 @@ final class LedgerDatabase extends SQLiteOpenHelper {
     }
     long addDividend(long holdingId, long accountId, double perShare, double total, String currency,
                      String recordDate, String exDate, String payDate, String status, double taxRate,
-                     boolean taxKnown, String note) {
+                     boolean taxKnown, Double actualReceivedAmount, String note) {
         ContentValues cv = new ContentValues(); cv.put("holding_id", holdingId); cv.put("account_id", accountId);
         cv.put("amount_per_share", perShare); cv.put("total", total); cv.put("currency", currency);
         cv.put("record_date", recordDate); cv.put("ex_date", exDate); cv.put("pay_date", payDate);
         cv.put("status", status); cv.put("note", note); cv.put("created_at", Instant.now().toString());
         cv.put("tax_rate", taxRate); cv.put("tax_known", taxKnown ? 1 : 0);
-        return getWritableDatabase().insertOrThrow("dividends", null, cv);
+        if (actualReceivedAmount != null) cv.put("received_amount", actualReceivedAmount);
+        SQLiteDatabase db = getWritableDatabase(); long id = db.insertOrThrow("dividends", null, cv);
+        if ("received".equals(status) && actualReceivedAmount != null) adjustCostForDividend(db, holdingId, actualReceivedAmount);
+        return id;
+    }
+
+    private void adjustCostForDividend(SQLiteDatabase db, long holdingId, double actualNetAmount) {
+        if (actualNetAmount == 0d) return;
+        try (Cursor c = db.rawQuery("SELECT quantity,cost,cost_method FROM holdings WHERE _id=?", new String[]{String.valueOf(holdingId)})) {
+            if (!c.moveToFirst() || !FinanceMath.COST_DIVIDEND_ADJUSTED.equals(c.getString(2))) return;
+            double quantity = c.getDouble(0), cost = c.getDouble(1);
+            if (quantity <= 0d) return;
+            ContentValues update = new ContentValues();
+            update.put("cost", FinanceMath.costAfterReceivedDividend(FinanceMath.COST_DIVIDEND_ADJUSTED, quantity, cost, actualNetAmount));
+            db.update("holdings", update, "_id=?", new String[]{String.valueOf(holdingId)});
+        }
     }
 
     boolean addPublicDividend(long holdingId, long accountId, String code, String sourceKey,
@@ -290,23 +342,77 @@ final class LedgerDatabase extends SQLiteOpenHelper {
         }
         return lots;
     }
+
+    boolean hasCompleteTaxLotCoverage(long holdingId, String date, double holdingQuantity,
+                                     boolean compareHoldingQuantity) {
+        LocalDate asOf = strictIsoDate(date);
+        if (asOf == null) return false;
+        double openingQuantity; String openedOn;
+        try (Cursor c = getReadableDatabase().rawQuery("SELECT initial_quantity,opened_on FROM holdings WHERE _id=?", new String[]{String.valueOf(holdingId)})) {
+            if (!c.moveToFirst()) return false;
+            openingQuantity = c.getDouble(0); openedOn = c.getString(1) == null ? "" : c.getString(1);
+        }
+        if (!Double.isFinite(openingQuantity) || openingQuantity < 0d) return false;
+        LocalDate openingDate = openedOn.isEmpty() ? null : strictIsoDate(openedOn);
+        if ((!openedOn.isEmpty() && openingDate == null) || (openingQuantity > 1e-8 && openingDate == null)) return false;
+        if (!taxTransactionsReliableAt(holdingId, asOf, openingDate)) return false;
+
+        double expectedQuantity = estimatedQuantityAt(holdingId, asOf.toString());
+        if (!Double.isFinite(expectedQuantity) || expectedQuantity < 0d) return false;
+        if (compareHoldingQuantity && !FinanceMath.sameShareQuantity(expectedQuantity, holdingQuantity)) return false;
+
+        JSONArray rows = taxLotsAt(holdingId, asOf.toString());
+        ArrayList<FinanceMath.Lot> datedLots = new ArrayList<>();
+        for (int i = 0; i < rows.length(); i++) {
+            org.json.JSONObject row = rows.optJSONObject(i);
+            if (row == null) return false;
+            LocalDate acquiredOn = strictIsoDate(row.optString("opened_on", ""));
+            double quantity = row.optDouble("quantity", Double.NaN);
+            if (acquiredOn == null) return false;
+            datedLots.add(new FinanceMath.Lot(quantity, acquiredOn));
+        }
+        return FinanceMath.hasCompleteTaxLotCoverage(datedLots, expectedQuantity, asOf);
+    }
+
+    private boolean taxTransactionsReliableAt(long holdingId, LocalDate asOf, LocalDate openingDate) {
+        try (Cursor c = getReadableDatabase().rawQuery("SELECT side,quantity,trade_date FROM transactions WHERE holding_id=? ORDER BY trade_date,_id", new String[]{String.valueOf(holdingId)})) {
+            while (c.moveToNext()) {
+                String side = c.getString(0), tradeDate = c.getString(2); double quantity = c.getDouble(1);
+                LocalDate date = strictIsoDate(tradeDate);
+                if (date == null || quantity <= 0d || !Double.isFinite(quantity) ||
+                        !("买入".equals(side) || "卖出".equals(side))) return false;
+                if (openingDate != null && !date.isAfter(asOf) && date.isBefore(openingDate)) return false;
+            }
+        }
+        return true;
+    }
+
+    private static LocalDate strictIsoDate(String value) {
+        if (value == null || value.isEmpty()) return null;
+        try {
+            LocalDate parsed = LocalDate.parse(value);
+            return parsed.toString().equals(value) ? parsed : null;
+        } catch (RuntimeException ignored) { return null; }
+    }
+
     private static final class TaxLot { double quantity; final String openedOn; TaxLot(double q, String d) { quantity = q; openedOn = d; } }
     boolean addTransaction(long holdingId, long accountId, String side, String tradeDate,
                            double quantity, double price, double fees, String note) {
         if (quantity <= 0 || price < 0 || fees < 0 || !("买入".equals(side) || "卖出".equals(side))) return false;
         SQLiteDatabase db = getWritableDatabase(); db.beginTransaction();
         try {
-            double oldQty, oldCost;
-            try (Cursor c = db.rawQuery("SELECT quantity,cost FROM holdings WHERE _id=?", new String[]{String.valueOf(holdingId)})) {
-                if (!c.moveToFirst()) return false; oldQty = c.getDouble(0); oldCost = c.getDouble(1);
+            double oldQty, oldCost; String costMethod;
+            try (Cursor c = db.rawQuery("SELECT quantity,cost,cost_method FROM holdings WHERE _id=?", new String[]{String.valueOf(holdingId)})) {
+                if (!c.moveToFirst()) return false; oldQty = c.getDouble(0); oldCost = c.getDouble(1); costMethod = c.getString(2);
             }
             double newQty, newCost = oldCost;
             if ("买入".equals(side)) {
                 newQty = oldQty + quantity;
-                newCost = FinanceMath.weightedBuyCost(oldQty, oldCost, quantity, price, fees);
+                newCost = FinanceMath.costAfterBuy(costMethod, oldQty, oldCost, quantity, price, fees);
             } else {
                 if (quantity > oldQty + 1e-8) return false;
                 newQty = FinanceMath.sellQuantity(oldQty, quantity);
+                newCost = FinanceMath.costAfterSell(costMethod, oldQty, oldCost, quantity, price, fees);
             }
             ContentValues cv = new ContentValues(); cv.put("holding_id", holdingId); cv.put("account_id", accountId);
             cv.put("side", side); cv.put("trade_date", tradeDate); cv.put("quantity", quantity);
@@ -395,14 +501,16 @@ final class LedgerDatabase extends SQLiteOpenHelper {
         for (int i = 0; i < holdings.length(); i++) {
             JSONObject r = holdings.optJSONObject(i); requireObject(r, "持仓");
             if (r.optString("name").trim().isEmpty() || !accountIds.contains(r.optLong("account_id"))) throw new JSONException("持仓名称或所属账户无效");
-            if (r.optDouble("quantity", -1) < 0 || r.optDouble("cost", -1) < 0 || r.optDouble("tax_rate", 0.10) < 0 || r.optDouble("tax_rate", 0.10) > 1 || r.optDouble("annual_dividend_per_unit", 0) < 0) throw new JSONException("持仓数量、成本、派息或税率无效");
+            String costMethod = r.optString("cost_method", FinanceMath.COST_WEIGHTED_AVERAGE);
+            boolean signedCostAllowed = FinanceMath.COST_DILUTED.equals(costMethod) || FinanceMath.COST_DIVIDEND_ADJUSTED.equals(costMethod);
+            if (!(FinanceMath.COST_WEIGHTED_AVERAGE.equals(costMethod) || signedCostAllowed) || r.optDouble("quantity", -1) < 0 || (!signedCostAllowed && r.optDouble("cost", -1) < 0) || r.optDouble("tax_rate", 0.10) < 0 || r.optDouble("tax_rate", 0.10) > 1 || r.optDouble("annual_dividend_per_unit", 0) < 0) throw new JSONException("持仓数量、成本算法、派息或税率无效");
             holdingAccounts.put(r.optLong("_id"), r.optLong("account_id"));
         }
         validateLinkedRows(dividends, holdingIds, accountIds, holdingAccounts, "分红");
         validateLinkedRows(transactions, holdingIds, accountIds, holdingAccounts, "交易");
         for (int i = 0; i < dividends.length(); i++) {
             JSONObject r = dividends.optJSONObject(i); String status = r.optString("status");
-            if (!("expected".equals(status) || "received".equals(status)) || r.optString("pay_date").trim().isEmpty() || r.optDouble("total", -1) < 0) throw new JSONException("分红记录字段无效");
+            if (!("expected".equals(status) || "received".equals(status)) || r.optString("pay_date").trim().isEmpty() || r.optDouble("total", -1) < 0 || (!r.isNull("received_amount") && r.optDouble("received_amount", -1) < 0)) throw new JSONException("分红记录字段无效");
         }
         for (int i = 0; i < transactions.length(); i++) {
             JSONObject r = transactions.optJSONObject(i); String side = r.optString("side");

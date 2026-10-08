@@ -39,6 +39,6 @@ require("搜索选中/手动新增在结果窗关闭后打开新表单", "new Ha
 require("持仓表单搜索回填保留原视图且回调引用单个编辑器实例", "editorDialog[0]" in holding and "beginSecuritySearch(pre ->" in holding and "beginCatalogSearch(pre ->" in holding)
 require("分红金额预览只注册一次文本监听并单独复算", dividend.count("perShare.addTextChangedListener") == 1 and "update.run();" in dividend)
 require("分红表单使用滚动窗体且保存逻辑仍仅有一次", "wrapForm(f)" in dividend and dividend.count("db.addDividend(") == 1)
-require("应用版本已递增到 1.4.0-debug / versionCode 14", re.search(r"versionCode\s+14", build) is not None and re.search(r"versionName\s+'1\.4\.0'", build) is not None and "applicationIdSuffix '.debug'" in build)
+require("应用版本已递增到 1.4.5-debug / versionCode 19", re.search(r"versionCode\s+19", build) is not None and re.search(r"versionName\s+'1\.4\.5'", build) is not None and "applicationIdSuffix '.debug'" in build)
 
 print("通过：源码级对话框回归完成；不等同于真机布局、字体缩放或触屏流程验证。")

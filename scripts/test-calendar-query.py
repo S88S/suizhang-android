@@ -26,7 +26,7 @@ if queries.keys() < required:
 conn = sqlite3.connect(":memory:")
 conn.executescript("""
 CREATE TABLE accounts (_id INTEGER PRIMARY KEY, name TEXT NOT NULL);
-CREATE TABLE holdings (_id INTEGER PRIMARY KEY, name TEXT, code TEXT, tax_rate REAL, market TEXT, account_id INTEGER);
+CREATE TABLE holdings (_id INTEGER PRIMARY KEY, name TEXT, code TEXT, tax_rate REAL, market TEXT, account_id INTEGER, tax_mode TEXT, quantity REAL);
 CREATE TABLE dividends (_id INTEGER PRIMARY KEY, holding_id INTEGER, account_id INTEGER, pay_date TEXT, record_date TEXT, ex_date TEXT, total REAL, status TEXT, currency TEXT);
 """)
 
@@ -48,9 +48,9 @@ for name, (sql, args) in queries.items():
 print("PASS SQLite executes all calendar filters against an empty ledger")
 
 conn.executemany("INSERT INTO accounts VALUES (?, ?)", [(1, "账户一"), (2, "账户二")])
-conn.executemany("INSERT INTO holdings VALUES (?, ?, ?, ?, ?, ?)", [
-    (11, "证券一", "AAA", 0.1, "A股", 1),
-    (22, "证券二", "BBB", 0.1, "A股", 2),
+conn.executemany("INSERT INTO holdings VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [
+    (11, "证券一", "AAA", 0.1, "A股", 1, "auto", 100),
+    (22, "证券二", "BBB", 0.1, "A股", 2, "auto", 200),
 ])
 conn.executemany("INSERT INTO dividends VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [
     (101, 11, 1, "2026-10-15", "2026-09-30", "2026-10-14", 10.0, "expected", "CNY"),
