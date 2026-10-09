@@ -1,1 +1,9 @@
 gradlew.bat text eol=crlf
+
+# Shell 脚本必须保持 LF，否则在 Linux/macOS 上无法执行
+*.sh text eol=lf
+
+# Java 源码与 Markdown 统一 LF，避免跨平台差异
+*.java text eol=lf
+*.md text eol=lf
+*.py text eol=lf

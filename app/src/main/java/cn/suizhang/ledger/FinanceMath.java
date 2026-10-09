@@ -13,6 +13,14 @@ final class FinanceMath {
 
     private FinanceMath() {}
 
+    /**
+     * @deprecated 无生产调用点（1.4.7 全面改用 {@link #costAfterBuy} 按口径分派）。
+     *     保留原因：本方法的算式与 {@code costAfterBuy(COST_WEIGHTED_AVERAGE, ...)} 一致，
+     *     但缺少非有限数校验，删除前需确认无仓库外依赖——类与方法均为包私有，
+     *     编译期不可能被其他包调用，反射调用则需另行排查。
+     *     新增代码请改用 {@link #costAfterBuy}。
+     */
+    @Deprecated
     static double weightedBuyCost(double oldQuantity, double oldUnitCost,
                                   double buyQuantity, double buyPrice, double fees) {
         if (oldQuantity < 0 || oldUnitCost < 0 || buyQuantity <= 0 || buyPrice < 0 || fees < 0) {
@@ -135,10 +143,41 @@ final class FinanceMath {
         Lot(double quantity, LocalDate acquiredOn) { this.quantity = quantity; this.acquiredOn = acquiredOn; }
     }
 
-    /** Weighted A-share dividend tax scenario by holding duration on the record date (not a tax filing result). */
+    /**
+     * Weighted A-share dividend tax scenario by holding duration on the record date (not a tax filing result).
+     *
+     * <p>法条依据（情景估算依据，不等同券商实际扣税结论）：
+     * <ul>
+     *   <li>财税〔2015〕101号《上市公司股息红利差别化个人所得税政策》：
+     *       持股 1 个月以内（含 1 个月）按 20%、1 个月以上至 1 年以内（含 1 年）按 10%、
+     *       超过 1 年暂免。本方法三档即对应此处的 shortRate/mediumRate/longRate。</li>
+     *   <li>财税〔2012〕85号《关于上市公司股息红利差别化个人所得税政策有关问题的通知》：
+     *       持股期限按"自首次购入股票之日"起算、至"转让股票之日"止计算，
+     *       因此本方法以每个买入批次的 acquiredOn 分别计算持有期，而非按首买日统算。</li>
+     * </ul>
+     *
+     * <p>税率区间来自用户设置（默认 20%/10%/0%，可调整），须显式拒绝非有限数：
+     * {@code NaN < 0} 与 {@code NaN > 1} 都为 false，仅用区间比较会让 NaN 税率静默通过
+     * 并使加权结果变为 NaN。与 {@link #costAfterBuy} 同口径。
+     *
+     * <p>档位切换点由 {@code plusMonths(1)} / {@code plusYears(1)} 决定，二者对不完整月份做钳位，
+     * 故1月31日买入的"一个月"截止在2月28/29日、闰日2月29日买入的"一年"截止在次年2月28日。
+     * <p>边界日当天即归入上一档，与"含本数"的法条表述一致。
+     *
+     * <p>原文链接（政策可能变动，修改档位前应先核对现行有效性）：
+     * <ul>
+     *   <li>财税〔2015〕101号：
+     *       https://fgk.chinatax.gov.cn/zcfgk/c102416/c5203902/content.html</li>
+     *   <li>财税〔2012〕85号：
+     *       https://www.mof.gov.cn/gkml/caizhengwengao/2012wg/wg201212/201302/t20130205_732225.htm</li>
+     * </ul>
+     */
     static double aShareRecordDateTaxRate(List<Lot> lots, LocalDate recordDate,
                                           double shortRate, double mediumRate, double longRate) {
-        if (recordDate == null || shortRate < 0 || shortRate > 1 || mediumRate < 0 || mediumRate > 1 || longRate < 0 || longRate > 1)
+        if (recordDate == null
+                || !Double.isFinite(shortRate) || shortRate < 0 || shortRate > 1
+                || !Double.isFinite(mediumRate) || mediumRate < 0 || mediumRate > 1
+                || !Double.isFinite(longRate) || longRate < 0 || longRate > 1)
             throw new IllegalArgumentException("登记日或税率不合法");
         double shares = 0, taxWeightedShares = 0;
         for (Lot lot : lots) {
@@ -170,7 +209,7 @@ final class FinanceMath {
     }
 
     static double annualExpense(String period, double amount) {
-        if (amount < 0) throw new IllegalArgumentException("支出金额不能为负数");
+        if (amount < 0 || !Double.isFinite(amount)) throw new IllegalArgumentException("支出金额不合法");
         switch (period) {
             case "日": return amount * 365d;
             case "月": return amount * 12d;

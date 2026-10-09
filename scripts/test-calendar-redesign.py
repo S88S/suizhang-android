@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 ROOT = Path(__file__).resolve().parents[1]
 MAIN = (ROOT / "app/src/main/java/cn/suizhang/ledger/MainActivity.java").read_text(encoding="utf-8")
 BUILD = (ROOT / "app/build.gradle").read_text(encoding="utf-8")
-DESIGN = (ROOT / "DESIGN.md").read_text(encoding="utf-8")
+DESIGN = (ROOT / "docs/design/DESIGN.md").read_text(encoding="utf-8")
 
 
 def section(start: str, end: str) -> str:

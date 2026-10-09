@@ -5,7 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MAIN = (ROOT / "app/src/main/java/cn/suizhang/ledger/MainActivity.java").read_text(encoding="utf-8")
 DB = (ROOT / "app/src/main/java/cn/suizhang/ledger/LedgerDatabase.java").read_text(encoding="utf-8")
-DESIGN = (ROOT / "DESIGN.md").read_text(encoding="utf-8")
+DESIGN = (ROOT / "docs/design/DESIGN.md").read_text(encoding="utf-8")
 
 
 def require(label: str, ok: bool) -> None:

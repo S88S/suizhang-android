@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MAIN = (ROOT / "app/src/main/java/cn/suizhang/ledger/MainActivity.java").read_text(encoding="utf-8")
 BUILD = (ROOT / "app/build.gradle").read_text(encoding="utf-8")
 NOTICES = (ROOT / "app/src/main/assets/licenses/THIRD_PARTY_NOTICES.txt").read_text(encoding="utf-8")
-SOURCE_NOTICES = (ROOT / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
+SOURCE_NOTICES = (ROOT / "docs/compliance/THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
 
 
 def section(start: str, end: str) -> str:
