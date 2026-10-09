@@ -19,5 +19,5 @@ check("无精确结果/接口失败仍允许继续手工录入", "不自动填�
 check("代码回填函数不改数量、成本或交易/到账记录", "quantity.setText" not in lookup and "cost.setText" not in lookup and "db.addTransaction" not in lookup and "db.addDividend" not in lookup)
 check("ETF/基金可查询行情并按现有公开缓存标记", '"ETF".equals(market)' in client and '"基金".equals(market)' in client and "isCacheFresh" in client)
 check("基金/ETF无已验证分红源时不伪装零分红", "当前已验证的公开分红接口不支持基金/ETF" in main and "不把缺少数据当作零分红" in main)
-check("版本递增一次至 1.4.5 / versionCode 19", "versionName '1.4.5'" in build and "versionCode 19" in build)
+check("版本递增一次至 1.4.7 / versionCode 21", "versionName '1.4.7'" in build and "versionCode 21" in build)
 print("通过：证券代码自动回填源码与隐私回归")

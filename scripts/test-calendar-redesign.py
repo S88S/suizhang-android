@@ -26,14 +26,16 @@ context_button = section("private MaterialButton calendarContextButton(", "priva
 calendar = section("private void showCalendar()", "private CardColumn calendarControlPanel()")
 render = section("private void render()", "private com.google.android.material.bottomnavigation.BottomNavigationView bottomNav()")
 
-require("新包版本递增且应用身份可覆盖升级", "versionName '1.4.5'" in BUILD and re.search(r"versionCode\s+19\b", BUILD) is not None and "applicationId 'cn.suizhang.ledger'" in BUILD and "applicationIdSuffix '.debug'" in BUILD)
+require("新包版本递增且应用身份可覆盖升级", "versionName '1.4.7'" in BUILD and re.search(r"versionCode\s+21\b", BUILD) is not None and "applicationId 'cn.suizhang.ledger'" in BUILD and "applicationIdSuffix '.debug'" in BUILD)
 require("继续使用现有 Material Components Views 依赖", "com.google.android.material:material:1.14.0" in BUILD and "MaterialButtonToggleGroup" in MAIN and "androidx.compose" not in BUILD)
 require("麦金色作为浅/深主题主色，日历与行情语义另保留", '"primary"' in DESIGN and "#8A5E0B" in DESIGN and "#F0C45B" in DESIGN and "#B3261E" in DESIGN and "#FF8A80" in DESIGN)
 require("日历视图组保持单选并使用图标", "group.setSingleSelection(true)" in toggle and "group.setSelectionRequired(true)" in toggle and "ic_nav_calendar" in toggle and "ic_calendar_view_month_24" in toggle)
 require("月历/年度总览等宽且点击高度至少 48dp", 'String[] labels = {"月历", "年度总览"}' in toggle and "new LinearLayout.LayoutParams(0, dimen(R.dimen.ds_touch_target_min), 1)" in toggle)
-require("日历说明仍可展开并读出状态，且控件高至少 48dp", 'calendarHelpExpanded = !calendarHelpExpanded; render();' in controls and "已展开，点击收起" in controls and "已折叠，点击展开" in controls and "dimen(R.dimen.ds_touch_target_min)" in context_button)
+require("日历控件卡片仅承载月历/年度总览切换", "calendarViewToggle()" in controls and "日历说明" not in MAIN and "accountScopeLabel()" not in controls and "calendarHelpExpanded" not in MAIN)
 require("日历卡片采用 HiMiuix 表面且分段轨道为浅金色", "CardColumn panel = card()" in controls and "CardColumn extends MiuixCardView" in MAIN and "group.setBackground(round(getColor(R.color.app_primary_container)" in toggle and "group.setBackground(round(PRIMARY_CONTAINER" not in toggle)
-require("范围文本仍完整、带图标、不可交互且允许换行", "accountScopeLabel()" in controls and "ic_account_balance_wallet_24" in controls and "scope.setOnClickListener" not in controls and "scope.setEllipsize" not in controls)
+require("分段按钮下沿圆角与浅金轨道内沿相配", "Math.max(0, dimen(R.dimen.ds_control_group_radius) - dp(4))" in toggle)
+require("月份/年份箭头与回到当前控件统一为透明轻量样式", "android.graphics.Color.TRANSPARENT" in context_button and "android.graphics.Color.TRANSPARENT" in section("private MaterialButton calendarNavButton(", "private void showCalendarYear()") and "dp(18)" in section("private MaterialButton calendarNavButton(", "private void showCalendarYear()"))
+require("账户范围提示仍只在持仓页显示且筛选仍是全局的", "accountScopeLabel()" in MAIN and "accountScopeLabel()" not in controls and "db.dividends(selectedAccount, ym)" in calendar and "db.dividendsInYear(selectedAccount, year)" in MAIN)
 require("月份/年份导航与回到当前按钮都使用本地图标", all(icon in MAIN for icon in ("ic_chevron_left_24", "ic_chevron_right_24", "ic_today_24")))
 require("分红同步和手工录入保留原回调并配本地图标", "this::syncPublicDividends" in calendar and "this::beginAddDividend" in calendar and "ic_refresh_24" in calendar and "ic_edit_note_24" in calendar)
 require("日历以圆点替代登除派缩写，且保留可访问日期/事件描述", "calendarMarkerDot(markerColors[ti], 6, selected)" in calendar and "calendarTypes(types)" in calendar and "markerLabels" not in calendar)
@@ -48,7 +50,6 @@ require("日期标记、账户过滤和既有说明口径仍保留", all(token i
 required_icons = [
     "ic_calendar_view_month_24.xml", "ic_chevron_left_24.xml", "ic_chevron_right_24.xml",
     "ic_today_24.xml", "ic_refresh_24.xml", "ic_edit_note_24.xml", "ic_expand_more_24.xml",
-    "ic_account_balance_wallet_24.xml", "ic_info_24.xml",
 ]
 for filename in required_icons:
     path = ROOT / "app/src/main/res/drawable" / filename
@@ -62,4 +63,4 @@ for theme in ("values/colors.xml", "values-night/colors.xml"):
     dividend = colors["app_dividend_emphasis"]
     require(f"{theme} 麦金主色与涨红跌绿市场色分离", colors["app_primary"].upper() == ("8A5E0B" if theme == "values/colors.xml" else "F0C45B") and up != dividend and int(up[0:2], 16) > int(up[2:4], 16) * 1.4 and int(down[2:4], 16) > int(down[0:2], 16) * 1.4)
 
-print("通过：1.4.5 日历层级、麦金主题、Miuix 日历卡片、本地图标和业务交互源码回归；不替代真机屏幕验收。")
+print("通过：1.4.6 日历层级、麦金主题、Miuix 日历卡片、本地图标和业务交互源码回归；不替代真机屏幕验收。")

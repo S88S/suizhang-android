@@ -1,14 +1,16 @@
 # 穗账 Android
 
-**当前源码：1.4.5-debug（versionCode 19）麦金色 Miuix 风格界面优化**。日历参考息记截图调整为已公告提醒、月份导航、图例、本月待收概况、数据更新时间、日历网格；保留穗账原有账户筛选、年度总览和底部导航。新增三种成本算法、实际到账金额录入、持仓市值/盈亏/息率/同币种占比和持股天数。schema 升至 4，旧持仓成本保留并默认加权平均；切换成本算法不回算历史账本。包名 `cn.suizhang.ledger.debug`、最低 Android 10/API 29。**源码包与 APK 分开交付；不含用户私有账本数据。**公式与税务边界见 [`FORMULA_ALIGNMENT_1.4.3.md`](FORMULA_ALIGNMENT_1.4.3.md)，升级说明见 [`UPGRADE_1.4.3.md`](UPGRADE_1.4.3.md)，设计准则见 [`DESIGN.md`](DESIGN.md)，已知问题见 [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md)。
+**当前源码：1.4.7-debug（versionCode 21）**。延续 1.4.6 的暖麦金/炭灰界面与可选总览指标，新增标准 Excel `.xlsx` 完整账本工作簿，按账户、持仓、分红、交易、支出目标、标的索引和本地设置分表，附编辑说明；支持导入工作簿并保留旧版 JSON 导入兼容。导入有明确的全量替换确认和事务校验，工作簿不会自动上传。包名 `cn.suizhang.ledger.debug`、最低 Android 10/API 29。**公开仓库只同步源码和文档，不包含 APK 或用户私有账本数据。**公式与税务边界见 [`FORMULA_ALIGNMENT_1.4.3.md`](FORMULA_ALIGNMENT_1.4.3.md)，升级说明见 [`UPGRADE_1.4.7.md`](UPGRADE_1.4.7.md)，设计准则见 [`DESIGN.md`](DESIGN.md)，已知问题见 [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md)。
 
 ## 主要功能
 
+- **1.4.7 Excel 账本工作簿**：一键导出/导入 `.xlsx`，包含使用说明和 7 张数据表；保留各表 ID 关联，便于在 Excel/WPS 查看、筛选与编辑。导入前会提示全量替换，结构或账本关系验证失败时原数据不变；兼容读取旧版 JSON 备份。无新增权限、外部服务或数据库迁移。详见 [`UPGRADE_1.4.7.md`](UPGRADE_1.4.7.md)。
+- **1.4.6 总览与日历精修**：总览改用炭灰主卡，年度分红金额更突出；十二项可选指标中可自定义展示 0–6 项，默认选中成本息率、市值息率、浮动盈亏、净投入、持仓只数和盈亏率，支持恢复默认。多币种不换算；市值/盈亏指标遵从最新行情可用性。日历移除说明与重复账户范围提示，修正分段选中态下沿圆角，并统一月份/年份导航与“回到今天/今年”的轻量样式。数据库 schema 与账本数据格式不变。详见 [`UPGRADE_1.4.6.md`](UPGRADE_1.4.6.md)。
 - **1.4.5 麦金色与 Miuix 风格更新**：浅色暖麦金、深色明金主题统一应用和 HiMiuix 控件色；卡片采用 HiMiuix `MiuixCardView`，已选穗升图标 A 配合金色底；日历登/除/派缩写改为三色圆点与完整图例；公开同步按钮在窄屏/大字号下按字号增高或改为纵向排列。界面字体改为本地 Noto Sans SC Regular；OFL 1.1 许可随包附带，字体静态文件约 8.33 MB，不从网络加载。数据库 schema 与账本数据格式不变。详见 [`UPGRADE_1.4.5.md`](UPGRADE_1.4.5.md)。
 - **1.4.4 A 股税批完整性修复**：自动税率仅在同一登记日的有效 FIFO 批次合计覆盖重放持仓量、当前日期另与账面持仓量相符时启用；历史分红卡读取时也会重核 A 股自动模式记录，避免沿用旧 tax_known；缺少/无效初始日期或交易日期时显示税务未确认。原税率区间和批次加权公式不变，数据库维持 schema 4，不新增迁移。详见 [`TAX_COVERAGE_1.4.4.md`](TAX_COVERAGE_1.4.4.md) 与 [`UPGRADE_1.4.4.md`](UPGRADE_1.4.4.md)。
 - **1.4.3 日历与公式对齐**：按参考图重排公告提醒、月份导航、日期图例、本月概况、更新时间与日历网格；日历/年度视图、账户范围和底部导航保持穗账原样。持仓新增市场值、浮动盈亏与盈亏率、昨收息率、成本息率、同币种占比和首买持股天数。涨红跌绿及 1.4.2 Material 控件继续保留。
 - **1.4.1 日历控件与分红视觉精修**：统一月历/年度总览、说明入口与全局账户范围；说明仍可展开，两个视图仍为单选，账户范围仍由总览控制；涨跌增加文字方向并按 A 股习惯涨红跌绿，平盘用中性色；红利指标强化，登记日/除权日/派息日等生命周期色保持原样。
-- **账本与成本口径**：多账户、持仓、交易、支出目标、DRIP 参数、统计及完整 JSON 导入/导出保留。提供分红摊薄、摊薄成本、加权平均三种前向算法；买入手续费计入成本，卖出手续费计入剩余成本，分红摊薄只扣用户录入的实际净到账。算法切换以当前成本为新起点，不回算切换前的交易/分红。
+- **账本与成本口径**：多账户、持仓、交易、支出目标、DRIP 参数、统计及完整 Excel `.xlsx` 导出/导入保留；仍能导入旧版 JSON 备份。提供分红摊薄、摊薄成本、加权平均三种前向算法；买入手续费计入成本，卖出手续费计入剩余成本，分红摊薄只扣用户录入的实际净到账。算法切换以当前成本为新起点，不回算切换前的交易/分红。
 - **持仓卡片**：显示市值、浮动盈亏、盈亏率、昨收息率、成本息率、同币种占比与年分红预估。无行情时市值按成本估值，但浮动盈亏不计并明确标注；不同币种不直接相加。
 - **证券搜索/自动回填**：主动搜索公开证券名称/代码，结构可识别时回填名称、代码、市场、币种；结果来自可变的东方财富公开搜索接口，应由用户核对。搜索服务失败时可用本地索引或手工输入。可选择基金、ETF 类别；行情服务把基金误分为 A 股时保留用户选的基金/ETF 类别。
 - **新增持仓自动预测**：选中或填完 A 股/港股代码后自动读取公开历史，默认按最近 3 个已完成年度的每股分红均值回填；可切换近 1/3/5 年。持有数量变化时即时显示“每份金额 × 数量”的预计年总额。取数失败使用缓存或给出提示，可手工录入；美股明确提示未接入自动分红。历史推算不是正式公告或已到账金额，来源与更新时间单独标明。
@@ -58,15 +60,17 @@ SQLite schema 从 3 升至 4，持仓新增成本算法字段（默认 `weighted
 ```bash
 ./gradlew --no-daemon clean assembleDebug lint testDebugUnitTest
 ./scripts/test-finance.sh
-./scripts/test-market-data.sh
-./scripts/test-dividend-forecast.sh
+bash scripts/test-market-data.sh
+bash scripts/test-dividend-forecast.sh
 python3 scripts/test-dividend-flow.py
 python3 scripts/test-dividend-persistence.py
 python3 scripts/test-formula-alignment.py
 python3 scripts/test-a-share-tax-coverage.py
 python3 scripts/test-backup-safety.py
 python3 scripts/test-ui-static.py
+python3 scripts/test-excel-backup.py
 python3 scripts/test-dividend-focus-ui.py
+python3 scripts/test-overview-metrics.py
 python3 scripts/test-no-plan-nav.py
 python3 scripts/test-dialog-regressions.py
 python3 scripts/test-design-tokens.py
@@ -76,7 +80,7 @@ python3 scripts/test-calendar-redesign.py
 
 说明：`testDebugUnitTest` Gradle 任务会执行，但当前 app 没有 JUnit 测试源，因此 Gradle 输出为 `NO-SOURCE`；本轮实际断言来自下面列出的项目自带回归脚本。
 
-1.4.5 交付验证覆盖 clean build、debug APK、完整既有财务/税务/数据源回归、设计令牌对比度、HiMiuix 颜色绑定、Noto 字体许可和日历大字号/窄屏布局静态检查。静态源码检查不等同于 Android 设备屏幕渲染。
+1.4.7 回归覆盖 Excel 工作表/字段映射、文件大小限制、拒绝公式、旧 JSON 兼容、全量恢复保护，以及 1.4.6 总览/日历、财务/税务和数据源检查。APK 已用 JDK 21、Android SDK Platform 36 与 Gradle 8.13 构建；当前无连接设备或模拟器，未进行运行时点按和屏幕截图验收。
 
 1.3.5 新增离线年度收息汇总用例：跨年/年末边界、空数据、币种分列、已到账/预计分离和年度显示范围；UI 静态回归验证月/年切换、账户范围、12 个月跳转、文字标记与估算语义。
 

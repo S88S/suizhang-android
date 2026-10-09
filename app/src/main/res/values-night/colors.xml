@@ -15,9 +15,9 @@
     <color name="app_error">#FFB4AB</color>
     <color name="app_outline">#B9A77E</color>
     <color name="app_outline_variant">#554B33</color>
-    <color name="app_hero_surface">#483512</color>
-    <color name="app_hero_on_surface">#FFF8E6</color>
-    <color name="app_hero_muted">#F2D98F</color>
+    <color name="app_hero_surface">#302B1F</color>
+    <color name="app_hero_on_surface">#F3EDD9</color>
+    <color name="app_hero_muted">#D1C6A8</color>
     <color name="app_progress_track">#4E4124</color>
     <color name="app_market_up">#FF8A80</color>
     <color name="app_market_down">#73D0A3</color>

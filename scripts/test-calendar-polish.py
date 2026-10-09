@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Source-level checks for the 1.4.5 Miuix calendar, gold palette, and accessible responsive actions."""
+"""Source-level checks for the 1.4.6 Miuix calendar, gold palette, and accessible responsive actions."""
 from pathlib import Path
 import re
 import xml.etree.ElementTree as ET
@@ -30,21 +30,20 @@ editor = section("private void showHoldingEditor(", "private interface CatalogPi
 transactions = section("private void showTransactions()", "private void showBoundaries()")
 quick_actions = section("private void showHoldingQuickActions()", "private void addTaxToggle()")
 
-require("版本只递增到 1.4.5 / code 19", "versionName '1.4.5'" in BUILD and re.search(r"versionCode\s+19\b", BUILD) is not None)
-require("月历控件仅由同一卡片承载，没有被隐藏或移到第二行独立卡", "calendarControlPanel()" in calendar and "calendarHelpRow()" not in MAIN)
+require("版本递增到 1.4.7 / code 21", "versionName '1.4.7'" in BUILD and re.search(r"versionCode\s+21\b", BUILD) is not None)
+require("日历切换控件独占同一卡片，不再显示说明或账户范围行", "calendarControlPanel()" in calendar and "calendarHelpRow()" not in MAIN and "日历说明" not in MAIN and "accountScopeLabel()" not in controls)
 require("Material 单选组始终要求保留一个已选视图", "group.setSingleSelection(true)" in toggle and "group.setSelectionRequired(true)" in toggle and "addOnButtonCheckedListener" in toggle)
 require("月历和年度总览均保留并共享可用宽度", 'String[] labels = {"月历", "年度总览"}' in toggle and "new LinearLayout.LayoutParams(0, dimen(R.dimen.ds_touch_target_min), 1)" in toggle)
 require("两项切换带有本地图标且保留单选语义", "R.drawable.ic_nav_calendar" in toggle and "R.drawable.ic_calendar_view_month_24" in toggle and "setCheckable(true)" in toggle)
-require("说明按钮复用本地 Material 图标且触控目标至少 48dp", "calendarContextButton(\"日历说明\"" in controls and "dimen(R.dimen.ds_touch_target_min)" in context_button)
 require("控制卡片只用一层表面与浅金分段轨道，不重复描边", "CardColumn panel = card()" in controls and "group.setBackground(round(getColor(R.color.app_primary_container)" in toggle and "group.setBackground(round(MINT" not in toggle)
-require("日历说明仍可展开/收起且有可访问状态名称", "calendarHelpExpanded = !calendarHelpExpanded; render();" in controls and "已展开，点击收起" in controls and "已折叠，点击展开" in controls)
-require("信息图标采用本地 VectorDrawable", "R.drawable.ic_info_24" in controls and (ROOT / "app/src/main/res/drawable/ic_info_24.xml").is_file())
+require("分段选中态圆角按轨道半径扣除内边距，避免底角错位", "Math.max(0, dimen(R.dimen.ds_control_group_radius) - dp(4))" in toggle)
+require("日历说明折叠状态及独立账户范围行已移除", "calendarHelpExpanded" not in MAIN and "ui_calendar_help_expanded" not in MAIN and "日历说明" not in MAIN and "ic_account_balance_wallet_24" not in controls)
+require("回到今天/今年保留至少 48dp 触控目标和可访问名称", "dimen(R.dimen.ds_touch_target_min)" in context_button and "setContentDescription(description)" in context_button)
+require("月份/年份箭头与回到当前使用相同的轻量透明底样式", "android.graphics.Color.TRANSPARENT" in section("private MaterialButton calendarNavButton(", "private void showCalendarYear()") and "android.graphics.Color.TRANSPARENT" in context_button and "dp(18)" in section("private MaterialButton calendarNavButton(", "private void showCalendarYear()"))
+require("已移除的日历说明图标不再绑定到切换卡", "R.drawable.ic_info_24" not in controls)
 scope_text = section("private String accountScopeLabel()", "private String accessibilityPaneTitle()")
-require("账户范围仍显示当前全局范围和总览切换入口", 'return "账户范围：" + accountLabel() + "（在总览切换）"' in scope_text and "accountScopeLabel()" in controls)
-require("账户范围可自然换行，无 maxLines 或省略号裁切", "scope.setMaxLines" not in controls and "scope.setEllipsize" not in controls and "new LinearLayout.LayoutParams(0, -2, 1)" in controls)
-require("日历账户范围仅为说明，不引入独立筛选动作", "scope.setOnClickListener" not in controls and "selectedAccount" not in controls)
-require("账户范围有图标、完整文案仍可换行", "R.drawable.ic_account_balance_wallet_24" in controls and "scope.setMaxLines" not in controls and "scope.setEllipsize" not in controls)
-require("账户筛选继续沿用总览全局范围", "db.dividends(selectedAccount, ym)" in calendar and "db.dividendsInYear(selectedAccount, year)" in MAIN and 'content.addView(text(accountScopeLabel()' in holdings)
+require("账户范围提示保留在持仓页，日历控件组不再重复显示", 'return "账户范围：" + accountLabel() + "（在总览切换）"' in scope_text and "accountScopeLabel()" not in controls and 'content.addView(text(accountScopeLabel()' in holdings)
+require("账户筛选继续由总览全局范围控制月历和年度查询", "db.dividends(selectedAccount, ym)" in calendar and "db.dividendsInYear(selectedAccount, year)" in MAIN)
 require("公开同步和手工录入入口保留完整读屏名称及本地图标", 'actionButton("同步公开分红"' in calendar and 'actionButton("手工录入"' in calendar and 'setContentDescription("更新公开分红数据")' in calendar and "ic_refresh_24" in calendar and "ic_edit_note_24" in calendar)
 require("加号新增持仓仍可手动新增和识别截图", 'setItems(new String[]{"手动新增持仓", "识别券商截图"}' in quick_actions and "chooseBrokerScreenshot()" in quick_actions)
 require("行情有涨红、跌绿、平盘中性和方向文字", 'changePercent > 0d ? MARKET_UP : changePercent < 0d ? MARKET_DOWN : INK' in MAIN and '"上涨 +"' in MAIN and '"下跌 "' in MAIN and '"平盘 0.00%"' in MAIN)
@@ -65,6 +64,8 @@ require("源码发行包也包含 Material Icons Apache-2.0 完整文本", "thir
 light = ET.parse(ROOT / "app/src/main/res/values/colors.xml").getroot()
 dark = ET.parse(ROOT / "app/src/main/res/values-night/colors.xml").getroot()
 colors = {"light": {e.attrib["name"]: e.text.strip().upper() for e in light.findall("color")}, "dark": {e.attrib["name"]: e.text.strip().upper() for e in dark.findall("color")}}
+dimensions = {e.attrib["name"]: e.text.strip() for e in ET.parse(ROOT / "app/src/main/res/values/dimens.xml").getroot().findall("dimen")}
+require("月历分段轨道12dp圆角与4dp内距形成8dp选中圆角", dimensions.get("ds_control_group_radius") == "12dp" and "Math.max(0, dimen(R.dimen.ds_control_group_radius) - dp(4))" in toggle)
 for theme, values in colors.items():
     require(f"{theme} 麦金分红强调与涨红跌绿行情色各自独立", values["app_market_up"] != values["app_dividend_emphasis"] and values["app_calendar_received"] == values["app_dividend_emphasis"])
     require(f"{theme} 分红主卡文字单独配置", "app_dividend_on_hero" in values)

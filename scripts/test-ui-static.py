@@ -22,7 +22,7 @@ stats = section("private void showStatsPage()", "private void showStats()")
 
 for name, body in (("总览", home), ("持仓", holdings), ("日历", calendar)):
     require(f"{name}不再放置税前/税后显眼切换", "addTaxToggle" not in body and "setTaxView" not in body)
-require("总览使用单一预计年分红毛额并单独突出金额", 'estimatedIncomeByCurrency(false)' in home and 'tokenText("预计年分红"' in home and 'hasEstimate ? formatAmounts(annual) : "暂无数据"' in home)
+require("总览使用单一预计年分红毛额并单独突出金额", 'estimatedIncomeByCurrency(false)' in home and 'LocalDate.now().getYear() + " 年预计分红"' in home and 'hasEstimate ? formatAmounts(annual) : "暂无数据"' in home)
 require("持仓卡片仅显示预计年分红单一口径", '预计年分红  ' in holdings and 'YoC' in holdings)
 require("统计页仍沿用旧税务显示偏好", "addTaxToggle();" in stats and 'tax_display' in source and "saveSetting(\"tax_display\"" in source)
 

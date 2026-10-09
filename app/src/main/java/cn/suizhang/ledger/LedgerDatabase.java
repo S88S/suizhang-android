@@ -155,6 +155,11 @@ final class LedgerDatabase extends SQLiteOpenHelper {
         if (accountId > 0) return query(sql + " WHERE t.account_id=? ORDER BY t.trade_date DESC,t._id DESC LIMIT " + Math.max(1, limit), new String[]{String.valueOf(accountId)});
         return query(sql + " ORDER BY t.trade_date DESC,t._id DESC LIMIT " + Math.max(1, limit), null);
     }
+    JSONArray netInvestedByCurrency(long accountId) {
+        String sql = "SELECT h.currency AS currency,COALESCE(SUM(CASE WHEN t.side='买入' THEN t.quantity*t.price+t.fees WHEN t.side='卖出' THEN -(t.quantity*t.price-t.fees) ELSE 0 END),0) AS total FROM transactions t JOIN holdings h ON h._id=t.holding_id";
+        if (accountId > 0) return query(sql + " WHERE t.account_id=? GROUP BY h.currency ORDER BY h.currency", new String[]{String.valueOf(accountId)});
+        return query(sql + " GROUP BY h.currency ORDER BY h.currency", null);
+    }
     String firstPurchaseDate(long holdingId) {
         String openedOn = "";
         try (Cursor c = getReadableDatabase().rawQuery("SELECT opened_on FROM holdings WHERE _id=?", new String[]{String.valueOf(holdingId)})) {

@@ -41,5 +41,5 @@ require("未解析日期保持空白并要求显式选有效日期", 'EditText d
 require("历史交易/已到账记录只提示不导入", "历史交易/已到账记录不会从本次持仓识别导入" in review and "db.addTransaction(" not in ocr_path and "db.addDividend(" not in ocr_path)
 require("预览不记录或展示股东号及原始整页文本", "不显示股东号" in review and "Text raw" not in review)
 require("截图识别不新增权限，schema 4 仍不存 OCR 原文", "DB_VERSION = 4" in database and "uses-permission" in manifest and manifest.count("uses-permission") == 1 and "OCR" not in database)
-require("本轮版本仅升至 1.4.5 / code 19", "versionName '1.4.5'" in build and "versionCode 19" in build)
+require("本轮版本仅升至 1.4.7 / code 21", "versionName '1.4.7'" in build and "versionCode 21" in build)
 print("通过：东方财富截图导入路径源码/结构回归完成；源码检查不替代 Android 设备目视测试。")
