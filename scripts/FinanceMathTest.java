@@ -12,8 +12,13 @@ public final class FinanceMathTest {
         near("10% 税率税后分红", FinanceMath.afterTax(250, .10), 225);
         near("持仓年分红", FinanceMath.annualDividend(80, 2.5), 200);
 
+        // weightedBuyCost 已标记 @Deprecated（无生产调用点）；此处保留调用是为了
+        // 持续验证它与 costAfterBuy(COST_WEIGHTED_AVERAGE, ...) 算式一致，两者须长期同值。
+        @SuppressWarnings("deprecation")
         double average = FinanceMath.weightedBuyCost(10, 10, 5, 14, 5);
         near("买入含手续费的加权均价", average, 175d / 15d);
+        near("已废弃的 weightedBuyCost 与 costAfterBuy 加权口径同值",
+                average, FinanceMath.costAfterBuy(FinanceMath.COST_WEIGHTED_AVERAGE, 10, 10, 5, 14, 5));
         near("卖出后的持仓量", FinanceMath.sellQuantity(15, 4), 11);
         near("卖出后均价不变时的剩余成本", FinanceMath.sellQuantity(15, 4) * average, 11 * (175d / 15d));
         near("加权平均卖出费计入剩余成本", FinanceMath.costAfterSell(FinanceMath.COST_WEIGHTED_AVERAGE, 10, 12, 4, 20, 2), 12.333333333333334);

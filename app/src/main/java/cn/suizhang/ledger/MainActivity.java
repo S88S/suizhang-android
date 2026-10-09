@@ -2271,7 +2271,7 @@ public class MainActivity extends AppCompatActivity {
     }
     private double safeAnnualExpense(String period, double amount) { try { return FinanceMath.annualExpense(period, amount); } catch (Exception e) { return 0; } }
     private double totalGoalForCurrency(String currency) { double sum = 0; JSONArray goals = db.goals(); for (int i = 0; i < goals.length(); i++) { JSONObject g = goals.optJSONObject(i); if (currency.equals(g.optString("currency"))) sum += safeAnnualExpense(g.optString("period"), g.optDouble("amount")); } return sum; }
-    private double settingDouble(String key, double fallback) { try { return Double.parseDouble(db.setting(key, String.valueOf(fallback))); } catch (Exception e) { return fallback; } }
+    private double settingDouble(String key, double fallback) { try { double v = Double.parseDouble(db.setting(key, String.valueOf(fallback))); return Double.isFinite(v) ? v : fallback; } catch (Exception e) { return fallback; } }
     private String setting(String key, String fallback) { return db.setting(key, fallback); }
     private double clampRate(double rate) { return Math.max(0, Math.min(1, rate)); }
     private Map<String, Double> scaleMap(Map<String, Double> source, double scale) { Map<String, Double> out = new TreeMap<>(); for (Map.Entry<String, Double> e : source.entrySet()) out.put(e.getKey(), e.getValue() * scale); return out; }
@@ -2283,7 +2283,7 @@ public class MainActivity extends AppCompatActivity {
     private String shortDate(String value) { LocalDate d = parseDate(value); return d == null ? value : d.format(DateTimeFormatter.ofPattern("M月d日")); }
     private LocalDate parseDate(String value) { try { return LocalDate.parse(value == null ? "" : value.trim(), ISO); } catch (Exception ignored) { return null; } }
     private String blankToNull(String value) { String v = value == null ? "" : value.trim(); return v.isEmpty() ? null : v; }
-    private double parseNumber(EditText e) { try { return Double.parseDouble(e.getText().toString().trim()); } catch (Exception ignored) { return 0; } }
+    private double parseNumber(EditText e) { try { double v = Double.parseDouble(e.getText().toString().trim()); return Double.isFinite(v) ? v : 0; } catch (Exception ignored) { return 0; } }
     private String accountLabel() { if (selectedAccount == 0) return "全部账户"; JSONArray a = db.accounts(); for (int i = 0; i < a.length(); i++) if (a.optJSONObject(i).optLong("_id") == selectedAccount) return a.optJSONObject(i).optString("name"); selectedAccount = 0; return "全部账户"; }
     private String safeMessage(Exception e) { String m = e.getMessage(); return m == null || m.trim().isEmpty() ? "请检查文件" : m; }
     private void toast(String msg) { Toast.makeText(this, msg, Toast.LENGTH_SHORT).show(); }
