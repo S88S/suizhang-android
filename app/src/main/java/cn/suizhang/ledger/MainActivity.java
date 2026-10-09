@@ -275,18 +275,17 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showHome() {
-        LinearLayout homeHeading = row(); homeHeading.setGravity(Gravity.CENTER_VERTICAL);
-        TextView homeTitle = tokenText("你的股息现金流", R.dimen.ds_type_page_title, INK, true);
+        LinearLayout homeHeading = new LinearLayout(this); homeHeading.setOrientation(LinearLayout.VERTICAL);
         TextView homeDate = text(LocalDate.now().format(DateTimeFormatter.ofPattern("M月d日 · EEE", Locale.CHINA)), 12, MUTED, false);
-        homeDate.setGravity(Gravity.CENTER_VERTICAL | Gravity.END); homeDate.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_END); homeDate.setMaxLines(2);
-        boolean stackedHeading = getResources().getConfiguration().screenWidthDp < 360 || getResources().getConfiguration().fontScale > 1.2f;
-        if (stackedHeading) {
-            homeHeading.setOrientation(LinearLayout.VERTICAL); homeDate.setGravity(Gravity.CENTER_VERTICAL | Gravity.START); homeDate.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_START);
-            homeHeading.addView(homeTitle, new LinearLayout.LayoutParams(-1, -2)); homeHeading.addView(homeDate, new LinearLayout.LayoutParams(-1, -2));
-        } else {
-            homeHeading.addView(homeTitle, new LinearLayout.LayoutParams(0, -2, 1)); homeHeading.addView(homeDate, new LinearLayout.LayoutParams(-2, -2));
-        }
-        content.addView(homeHeading, margin(0, 2, 0, 8));
+        homeDate.setGravity(Gravity.CENTER_VERTICAL);
+        homeHeading.addView(homeDate, new LinearLayout.LayoutParams(-1, -2));
+        TextView homeTitle = tokenText("你的股息现金流", R.dimen.ds_type_page_title, INK, true);
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(-1, -2);
+        titleParams.topMargin = dimen(R.dimen.ds_home_heading_gap);
+        homeHeading.addView(homeTitle, titleParams);
+        LinearLayout.LayoutParams headingParams = new LinearLayout.LayoutParams(-1, -2);
+        headingParams.topMargin = dp(2); headingParams.bottomMargin = dp(8);
+        content.addView(homeHeading, headingParams);
         JSONArray hs = db.holdings(selectedAccount);
         Map<String, Double> annual = estimatedIncomeByCurrency(false); Map<String, Double> costs = costByCurrency();
         boolean hasEstimate = hasAnyDividendEstimate();
@@ -531,7 +530,7 @@ public class MainActivity extends AppCompatActivity {
             JSONObject h = hs.optJSONObject(i); CardColumn item = card(); item.setOrientation(LinearLayout.VERTICAL);
             MarketDataClient.Quote quote = quoteFor(h);
             LinearLayout top = row(); top.setGravity(Gravity.CENTER_VERTICAL); top.addView(text(h.optString("name"), 16, INK, true), new LinearLayout.LayoutParams(0, -2, 1));
-            TextView tag = text(h.optString("market") + " · " + h.optString("currency"), 10, ACCENT, true); tag.setPadding(dp(8), dp(5), dp(8), dp(5)); tag.setBackground(round(PRIMARY_CONTAINER, dimen(R.dimen.ds_market_badge_radius), 0, 0)); top.addView(tag); item.addView(top);
+            TextView tag = text(h.optString("market") + " · " + h.optString("currency"), 10, ACCENT, true); tag.setPadding(dp(8), dp(5), dp(8), dp(5)); tag.setBackground(roundPx(PRIMARY_CONTAINER, dimen(R.dimen.ds_market_badge_radius), 0, 0)); top.addView(tag); item.addView(top);
             String code = h.optString("code");
             String quoteLine = quote == null ? "行情未同步 · 按持仓成本估值" : amount(quote.currency, quote.price) + "  " + marketMoveLabel(quote.changePercent) + (quote.stale ? " · 缓存" : "");
             item.addView(text((code.isEmpty() ? "未填写代码" : code) + " · " + h.optString("account_name") + "   " + quoteLine + (quote == null ? "" : " · 腾讯截至 " + timeLabel(quote.updatedAt)), 11, quote == null ? MUTED : marketMoveColor(quote.changePercent), false), margin(0, 4, 0, 9));
@@ -698,7 +697,7 @@ public class MainActivity extends AppCompatActivity {
                 }
                 cell.setMinimumHeight(dp(52)); cell.setFocusable(true);
                 cell.setContentDescription(cur.getYear() + "年" + cur.getMonthValue() + "月" + cd + "日" + (today ? "，今天" : "") + (types == null ? "，无分红事件" : calendarTypes(types)) + (selected ? "，已选中" : "，点按查看当日明细"));
-                cell.setBackground(round(selected ? getColor(R.color.app_primary) : (today ? PRIMARY_CONTAINER : 0x00000000), dimen(R.dimen.ds_calendar_cell_radius), 0, 0));
+                cell.setBackground(roundPx(selected ? getColor(R.color.app_primary) : (today ? PRIMARY_CONTAINER : 0x00000000), dimen(R.dimen.ds_calendar_cell_radius), 0, 0));
                 cell.setOnClickListener(v -> { selectedDay = cd; render(); });
             } else { cell.setMinimumHeight(dp(52)); cell.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO); }
             grid.addView(cell, p);
@@ -762,7 +761,7 @@ public class MainActivity extends AppCompatActivity {
         MaterialButtonToggleGroup group = new MaterialButtonToggleGroup(this);
         group.setSingleSelection(true); group.setSelectionRequired(true); group.setOrientation(LinearLayout.HORIZONTAL);
         group.setPadding(dp(4), dp(4), dp(4), dp(4));
-        group.setBackground(round(getColor(R.color.app_primary_container), dimen(R.dimen.ds_control_group_radius), 0, 0));
+        group.setBackground(roundPx(getColor(R.color.app_primary_container), dimen(R.dimen.ds_control_group_radius), 0, 0));
         String[] labels = {"月历", "年度总览"};
         int[] icons = {R.drawable.ic_nav_calendar, R.drawable.ic_calendar_view_month_24};
         final int monthButtonId = View.generateViewId(), yearButtonId = View.generateViewId();
@@ -862,21 +861,21 @@ public class MainActivity extends AppCompatActivity {
                 monthCard.addView(calendarAmountBar(amounts, summary.maxMonthlyTotal(currency)), margin(0, 3, 0, 4));
             }
         }
-        monthCard.setClickable(true); monthCard.setFocusable(true); monthCard.setForeground(new android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(getColor(R.color.app_primary_container)), null, round(android.graphics.Color.WHITE, 12, 0, 0)));
+        monthCard.setClickable(true); monthCard.setFocusable(true); monthCard.setForeground(new android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(getColor(R.color.app_primary_container)), null, roundDp(android.graphics.Color.WHITE, 12, 0, 0)));
         monthCard.setContentDescription(year + "年" + monthIndex + "月，" + monthSummary.eventCount() + "项收息事件，" + calendarMonthSpeech(monthSummary) + "，点按查看月历");
         monthCard.setOnClickListener(v -> { year = summary.year; month = monthIndex; selectedDay = null; calendarYearView = false; render(); });
         content.addView(monthCard, margin(0, 0, 0, 6));
     }
 
     private View calendarAmountBar(CalendarYearSummary.Amounts amounts, double maximum) {
-        LinearLayout track = row(); track.setOrientation(LinearLayout.HORIZONTAL); track.setMinimumHeight(dp(7)); track.setBackground(round(getColor(R.color.app_outline_variant), 5, 0, 0));
+        LinearLayout track = row(); track.setOrientation(LinearLayout.HORIZONTAL); track.setMinimumHeight(dp(7)); track.setBackground(roundDp(getColor(R.color.app_outline_variant), 5, 0, 0));
         double total = amounts.received + amounts.estimated;
         if (total <= 0 || maximum <= 0) { track.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO); return track; }
         float fraction = (float) Math.max(.025d, Math.min(1d, total / maximum));
         LinearLayout fill = row(); fill.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout.LayoutParams fillParams = new LinearLayout.LayoutParams(0, dp(7), fraction); track.addView(fill, fillParams);
-        if (amounts.received > 0) { View received = new View(this); received.setBackground(round(getColor(R.color.app_calendar_received), 5, 0, 0)); fill.addView(received, new LinearLayout.LayoutParams(0, dp(7), (float) (amounts.received / total))); }
-        if (amounts.estimated > 0) { View expected = new View(this); expected.setBackground(round(getColor(R.color.app_calendar_estimated), 5, 0, 0)); fill.addView(expected, new LinearLayout.LayoutParams(0, dp(7), (float) (amounts.estimated / total))); }
+        if (amounts.received > 0) { View received = new View(this); received.setBackground(roundDp(getColor(R.color.app_calendar_received), 5, 0, 0)); fill.addView(received, new LinearLayout.LayoutParams(0, dp(7), (float) (amounts.received / total))); }
+        if (amounts.estimated > 0) { View expected = new View(this); expected.setBackground(roundDp(getColor(R.color.app_calendar_estimated), 5, 0, 0)); fill.addView(expected, new LinearLayout.LayoutParams(0, dp(7), (float) (amounts.estimated / total))); }
         if (fraction < 1f) track.addView(new View(this), new LinearLayout.LayoutParams(0, dp(7), 1f - fraction));
         return track;
     }
@@ -906,7 +905,7 @@ public class MainActivity extends AppCompatActivity {
         String dateValue = "登记日".equals(eventKind) ? e.optString("record_date") : "除息日".equals(eventKind) ? e.optString("ex_date") : e.optString("pay_date");
         String dataClass = e.optString("data_class", "manual"); boolean received = "received".equals(e.optString("status"));
         int badgeColor = "登记日".equals(eventKind) ? getColor(R.color.app_calendar_record_date) : "除息日".equals(eventKind) ? getColor(R.color.app_calendar_ex_date) : getColor(R.color.app_calendar_pay_date);
-        LinearLayout top = row(); top.setGravity(Gravity.CENTER_VERTICAL); TextView date = text(shortDate(dateValue), 12, badgeColor, true); date.setPadding(dp(7), dp(7), dp(7), dp(7)); date.setBackground(round(PRIMARY_CONTAINER, dimen(R.dimen.ds_event_badge_radius), 0, 0)); top.addView(date);
+        LinearLayout top = row(); top.setGravity(Gravity.CENTER_VERTICAL); TextView date = text(shortDate(dateValue), 12, badgeColor, true); date.setPadding(dp(7), dp(7), dp(7), dp(7)); date.setBackground(roundPx(PRIMARY_CONTAINER, dimen(R.dimen.ds_event_badge_radius), 0, 0)); top.addView(date);
         LinearLayout desc = new LinearLayout(this); desc.setOrientation(LinearLayout.VERTICAL); desc.setPadding(dp(9), 0, 0, 0); desc.addView(text(e.optString("holding_name"), 13, INK, true));
         String statusLabel = DividendCalendarRules.statusLabel(dataClass, e.optString("status"));
         String sourceLabel = "manual".equals(e.optString("source", "manual")) ? "手工录入" : e.optString("source", "");
@@ -1074,7 +1073,7 @@ public class MainActivity extends AppCompatActivity {
             LinearLayout row = row(); row.addView(text(g.optString("name"), 15, INK, true), new LinearLayout.LayoutParams(0, -2, 1)); row.addView(actionButton("•••", false, () -> goalMenu(g))); item.addView(row);
             String per = g.optString("period"); item.addView(text(per + "支出 " + amount(curr, g.optDouble("amount")) + " · 年化 " + amount(curr, annual), 11, MUTED, false), margin(0, 5, 0, 0));
             item.addView(text("同币种预计净收入覆盖 " + percent(ratio / 100d) + "  ·  " + amount(curr, netIncome.getOrDefault(curr, 0d)) + " / 年", 12, ACCENT, true), margin(0, 5, 0, 0));
-            LinearLayout progress = new LinearLayout(this); progress.setOrientation(LinearLayout.HORIZONTAL); progress.setBackground(round(getColor(R.color.app_progress_track), 8, 0, 0)); progress.setClipToOutline(true);
+            LinearLayout progress = new LinearLayout(this); progress.setOrientation(LinearLayout.HORIZONTAL); progress.setBackground(roundDp(getColor(R.color.app_progress_track), 8, 0, 0)); progress.setClipToOutline(true);
             float fill = (float) Math.min(100d, Math.max(0d, ratio)); progress.addView(new View(this), new LinearLayout.LayoutParams(0, dp(5), Math.max(.01f, fill)));
             if (fill < 100f) progress.addView(new View(this), new LinearLayout.LayoutParams(0, dp(5), Math.max(.01f, 100f - fill)));
             LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(-1, dp(5)); bp.topMargin = dp(7); item.addView(progress, bp); content.addView(item, margin(0, 4, 0, 6));
@@ -1956,7 +1955,7 @@ public class MainActivity extends AppCompatActivity {
         MiuixListView selector = new MiuixListView(this);
         selector.setMultipleChoiceEnabled(false); selector.setItems(values);
         if (values.length > 0) { selector.setSelectedValues(new Integer[]{0}); selector.setTip(values[0]); }
-        selector.setMinimumHeight(dp(53)); selector.setFocusable(true); selector.setOnClickListener(v -> { }); setSelectorListener(selector, null);
+        selector.setMinimumHeight(dimen(R.dimen.miuix_basic_min_height)); selector.setFocusable(true); selector.setOnClickListener(v -> { }); setSelectorListener(selector, null);
         return selector;
     }
     private void setSelectorListener(MiuixListView selector, OnChooseItemListener delegate) {
@@ -2048,7 +2047,7 @@ public class MainActivity extends AppCompatActivity {
         icon = icon.mutate(); icon.setTint(tint); int size = dp(sizeDp); icon.setBounds(0, 0, size, size);
         view.setCompoundDrawablesRelative(icon, null, null, null); view.setCompoundDrawablePadding(dp(5));
     }
-    private TextView text(String value, int size, int color, boolean bold) { TextView t = new TextView(this); t.setText(value); float metadataSize = getResources().getDimension(R.dimen.ds_type_metadata) / getResources().getDisplayMetrics().scaledDensity; t.setTextSize(Math.max(size, metadataSize)); t.setTextColor(color); t.setTypeface(bold ? Typeface.create(appTypeface, Typeface.BOLD) : appTypeface); t.setGravity(Gravity.CENTER_VERTICAL); return t; }
+    private TextView text(String value, int size, int color, boolean bold) { TextView t = new TextView(this); t.setText(value); float metadataSize = getResources().getDimension(R.dimen.ds_type_metadata) / getResources().getDisplayMetrics().scaledDensity; t.setTextSize(Math.max(size, metadataSize)); t.setTextColor(color); t.setTypeface(bold ? Typeface.create(appTypeface, Typeface.BOLD) : appTypeface); t.setGravity(Gravity.CENTER_VERTICAL); t.setLineSpacing(dimen(size <= 11 ? R.dimen.ds_line_spacing_compact : R.dimen.ds_line_spacing_body), 1f); return t; }
     private TextView tokenText(String value, int sizeResource, int color, boolean bold) { TextView t = text(value, 12, color, bold); t.setTextSize(TypedValue.COMPLEX_UNIT_PX, getResources().getDimension(sizeResource)); return t; }
     private int dimen(int resource) { return getResources().getDimensionPixelSize(resource); }
     private LinearLayout form() { LinearLayout f = new LinearLayout(this); f.setOrientation(LinearLayout.VERTICAL); f.setPadding(dp(2), 0, dp(2), 0); return f; }
@@ -2087,7 +2086,7 @@ public class MainActivity extends AppCompatActivity {
             if (placeholder != null && placeholder.length() > 0 && !placeholder.toString().contentEquals(label)) box.setPlaceholderText(placeholder);
             f.addView(box, new LinearLayout.LayoutParams(-1, -2));
         } else if (input instanceof MiuixBasicView) {
-            MiuixBasicView selector = (MiuixBasicView) input; selector.setTitle(label); selector.setMinimumHeight(dp(53)); selector.setFocusable(true);
+            MiuixBasicView selector = (MiuixBasicView) input; selector.setTitle(label); selector.setMinimumHeight(dimen(R.dimen.miuix_basic_min_height)); selector.setFocusable(true);
             f.addView(selector, new LinearLayout.LayoutParams(-1, -2));
         } else {
             TextView labelView = text(label, 12, MUTED, true); labelView.setLabelFor(input.getId());
@@ -2156,7 +2155,8 @@ public class MainActivity extends AppCompatActivity {
         marker.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         return marker;
     }
-    private GradientDrawable round(int color, int radius, int stroke, int strokeWidth) { GradientDrawable d = new GradientDrawable(); d.setColor(color); d.setCornerRadius(dp(radius)); if (strokeWidth > 0) d.setStroke(dp(strokeWidth), stroke); return d; }
+    private GradientDrawable roundDp(int color, int radiusDp, int stroke, int strokeWidthDp) { GradientDrawable d = new GradientDrawable(); d.setColor(color); d.setCornerRadius(dp(radiusDp)); if (strokeWidthDp > 0) d.setStroke(dp(strokeWidthDp), stroke); return d; }
+    private GradientDrawable roundPx(int color, int radiusPx, int stroke, int strokeWidthPx) { GradientDrawable d = new GradientDrawable(); d.setColor(color); d.setCornerRadius(radiusPx); if (strokeWidthPx > 0) d.setStroke(strokeWidthPx, stroke); return d; }
     private LinearLayout.LayoutParams margin(int left, int top, int right, int bottom) { LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2); p.setMargins(dp(left), dp(top), dp(right), dp(bottom)); return p; }
     private View withMargins(View v, int left, int top, int right, int bottom) { LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1, -2); p.setMargins(dp(left), dp(top), dp(right), dp(bottom)); v.setLayoutParams(p); return v; }
     private int dp(float value) { return (int) (value * getResources().getDisplayMetrics().density + .5f); }

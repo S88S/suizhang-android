@@ -336,6 +336,22 @@
         "resource": "ds_compact_card_inset_vertical",
         "value": "12dp"
       },
+      "home_heading_gap": {
+        "resource": "ds_home_heading_gap",
+        "value": "8dp"
+      },
+      "miuix_basic_margin": {
+        "resource": "miuix_basic_margin",
+        "value": "12dp"
+      },
+      "miuix_basic_padding": {
+        "resource": "miuix_basic_padding",
+        "value": "16dp"
+      },
+      "miuix_basic_min_height": {
+        "resource": "miuix_basic_min_height",
+        "value": "53dp"
+      },
       "hero_inset_horizontal": {
         "resource": "ds_hero_inset_horizontal",
         "value": "20dp"
@@ -356,7 +372,7 @@
     "shape_and_depth": {
       "card_radius": {
         "resource": "ds_card_radius",
-        "value": "16dp"
+        "value": "18dp"
       },
       "hero_radius": {
         "resource": "ds_hero_radius",
@@ -373,6 +389,10 @@
       "filter_pill_radius": {
         "resource": "ds_filter_pill_radius",
         "value": "24dp"
+      },
+      "miuix_basic_radius": {
+        "resource": "miuix_basic_radius",
+        "value": "15dp"
       },
       "event_badge_radius": {
         "resource": "ds_event_badge_radius",
@@ -403,6 +423,14 @@
     },
     "typography": {
       "family": "Android system sans-serif; no downloaded font",
+      "line_spacing_body": {
+        "resource": "ds_line_spacing_body",
+        "value": "3dp"
+      },
+      "line_spacing_compact": {
+        "resource": "ds_line_spacing_compact",
+        "value": "2dp"
+      },
       "brand": {
         "resource": "ds_type_brand",
         "value": "24sp"
@@ -625,11 +653,13 @@
 
 ## 页面与组件模式
 
-**1.4.6 总览与日历精修**：总览浅色模式使用暖沙金摘要卡，深色模式使用暖炭灰；标题与日期并排、两端对齐，窄屏和大字号下允许自然换行。卡片突出年度分红，下面提供默认六项、可自选 0–6 项的指标栅格和“恢复默认”；选项保存在本地设置中，指标金额按币种分列、不做汇率换算。月历/年度总览切换卡只承载两个等宽、48dp 高的视图选项，不再重复展示日历说明入口或账户范围；账户筛选仍由总览全局控制。浅金分段轨道只有一层底色，轨道圆角为12dp、内边距4dp，选中项圆角为8dp，内侧接缝连续；不叠加描边。月份/年份左右导航和回到当前操作统一用透明轻量底、麦金图标/文字及48dp触控目标，避免侧向实心色块压过标题。完整日历事件口径由图例、月度到账概况及数据来源提示表达。外部截图标注不复刻成 App 的圈线或装饰边框。图标以 VectorDrawable 本地随包、可染色，不加载图标字体或远程资源（[图标目录](https://github.com/material-icons/material-icons)，[Google Fonts Material Symbols 指南](https://developers.google.com/fonts/docs/material_symbols)）。
+**1.4.6 总览与日历精修**：总览浅色模式使用暖沙金摘要卡，深色模式使用暖炭灰；首页日期在主标题上方、间隔8dp，标题允许自然换行。卡片突出年度分红，下面提供默认六项、可自选 0–6 项的指标栅格和“恢复默认”；选项保存在本地设置中，指标金额按币种分列、不做汇率换算。月历/年度总览切换卡只承载两个等宽、48dp 高的视图选项，不再重复展示日历说明入口或账户范围；账户筛选仍由总览全局控制。浅金分段轨道只有一层底色，轨道圆角为12dp、内边距4dp，选中项圆角为8dp，内侧接缝连续；不叠加描边。月份/年份左右导航和回到当前操作统一用透明轻量底、麦金图标/文字及48dp触控目标，避免侧向实心色块压过标题。完整日历事件口径由图例、月度到账概况及数据来源提示表达。外部截图标注不复刻成 App 的圈线或装饰边框。界面功能图标以 VectorDrawable 本地随包、可染色，不加载图标字体或远程资源；启动器图标保留512×512麦金底图与原有符号样式，仅将中央图形放大约15%并保持居中（[图标目录](https://github.com/material-icons/material-icons)，[Google Fonts Material Symbols 指南](https://developers.google.com/fonts/docs/material_symbols)）。
 
 沪深行情明确读出“上涨 / 下跌 / 平盘”：正涨为红、下跌为绿、零变化为中性色；买入/卖出动作不借用涨跌色。红色分红角色突出年度估算、已到账、YoC 与股息率。日期类型、预计/已到账生命周期图例仍使用独立状态色和文字，不用红绿替代。
 
-**顶栏**仅总览显示“穗账”与全局账户筛选；筛选按钮明确读出当前账户。持仓、日历、更多主 tab 不重复品牌栏或账户 selector，账户范围只以紧凑、非交互提示呈现，切换入口留在总览；当前账户筛选跨页一致，并在导航/Activity 状态恢复时保持。页面水平留白以18dp为基准，标准卡片内距16×14dp，首页紧凑持仓卡的垂直内距为12dp。卡片使用18dp圆角、1dp细描边和轻微层次；年度摘要卡使用20dp圆角、20×14dp内距，指标行最小48dp，数字优先于说明文字。
+**顶栏**仅总览显示“穗账”与全局账户筛选；筛选按钮明确读出当前账户。持仓、日历、更多主 tab 不重复品牌栏或账户 selector，账户范围只以紧凑、非交互提示呈现，切换入口留在总览；当前账户筛选跨页一致，并在导航/Activity 状态恢复时保持。页面水平留白以18dp为基准，标准卡片内距16×14dp，首页紧凑持仓卡的垂直内距为12dp。卡片使用18dp圆角、无显性描边与1dp轻微层次；年度摘要卡使用20dp圆角、20×14dp内距，指标行最小48dp，数字优先于说明文字。
+**Miuix 组件与排版节奏**：以项目内 HiMiuix 组件和资源作为可复现依据，而不把第三方仿制库当作小米官方设计规范。基础列表项沿用库的 53dp 最小高度、16dp 内距、12dp 分组间距和15dp圆角；应用卡片用18dp标准圆角、年度摘要卡20dp，按钮及分段控件使用独立控制圆角。首页日期在主标题上方，间隔8dp；所有多行正文统一增加3dp行距，紧凑元信息增加2dp行距。圆角工具分别接收已转换的px和dp，资源尺寸不得再次乘屏幕密度。
+
 **底部导航**只承载四个常用顶层页面，图标与文字同时可见；它不是新增动作菜单。底部栏上方用细分隔线与内容区区分，并显式处理状态栏、导航栏、挖孔、系统手势与 IME insets。滚动容器须在底部保留可滚动 padding，使最后一行完整可达，且不被导航栏、手势区或浮动按钮覆盖。主页加号为56dp本地矢量按钮，位于内容区右下方、导航栏上方；首页摘要指标优先完整显示在加号覆盖区之外，并继续为滚动内容保留净空。
 
 **总览**按“持仓时间提示 → 年度预测金额 → 用户自选 0–6 项指标 → 最高分红贡献的前四项持仓 → 下一笔预期”的顺序呈现。指标设置支持本地保存、恢复默认和零项隐藏，已到账、预计、成本、行情等字段各按其定义计算；任何货币值均分币种展示、不做汇率换算，缺少行情时不虚报浮动盈亏。预测说明应紧邻金额，明确金额不保证未来到账。新增不抢占总览主线，只通过加号提供手工新增和本机券商截图识别两条路径；空持仓说明如何开始，不重复放置大型新增按钮。

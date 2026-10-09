@@ -11,8 +11,19 @@
     <dimen name="ds_compact_card_inset_vertical">12dp</dimen>
     <dimen name="ds_hero_inset_horizontal">20dp</dimen>
     <dimen name="ds_hero_inset_vertical">14dp</dimen>
+    <dimen name="ds_home_heading_gap">8dp</dimen>
+    <dimen name="ds_line_spacing_body">3dp</dimen>
+    <dimen name="ds_line_spacing_compact">2dp</dimen>
     <dimen name="ds_overview_metric_row_min_height">48dp</dimen>
-    <dimen name="ds_card_radius">16dp</dimen>
+
+    <!-- HiMiuix base dimensions: keep the library's native row rhythm aligned with the app. -->
+    <dimen name="miuix_basic_margin">12dp</dimen>
+    <dimen name="miuix_basic_padding">16dp</dimen>
+    <dimen name="miuix_basic_min_height">53dp</dimen>
+    <dimen name="miuix_basic_radius">15dp</dimen>
+
+    <dimen name="ds_touch_target_min">48dp</dimen>
+    <dimen name="ds_card_radius">18dp</dimen>
     <dimen name="ds_hero_radius">20dp</dimen>
     <dimen name="ds_control_radius">12dp</dimen>
     <dimen name="ds_control_group_radius">12dp</dimen>
@@ -23,7 +34,6 @@
     <dimen name="ds_card_stroke_width">0dp</dimen>
     <dimen name="ds_card_elevation">1dp</dimen>
     <dimen name="ds_navigation_elevation">3dp</dimen>
-    <dimen name="ds_touch_target_min">48dp</dimen>
     <dimen name="ds_type_brand">24sp</dimen>
     <dimen name="ds_type_page_title">24sp</dimen>
     <dimen name="ds_type_section_title">16sp</dimen>

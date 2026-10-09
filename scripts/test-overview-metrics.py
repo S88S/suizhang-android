@@ -19,8 +19,9 @@ settings = MAIN[MAIN.index("private void showOverviewMetricSettings()"):MAIN.ind
 values = MAIN[MAIN.index("private Map<String, String> homeMetricValues("):MAIN.index("private String overviewHoldingDuration(")]
 
 require("总览采用主题协调的摘要卡并突出年度分红", "MiuixCardView heroSurface" in home and "R.color.app_dividend_on_hero" in home and "年预计分红" in home)
-require("首页日期与标题同排且保留自然换行", "LinearLayout homeHeading = row()" in home and "View.TEXT_ALIGNMENT_VIEW_END" in home and "setMaxLines(2)" in home)
-require("窄屏或大字号时首页标题日期改为竖排避免横向溢出", "screenWidthDp < 360" in home and "fontScale > 1.2f" in home and "homeHeading.setOrientation(LinearLayout.VERTICAL)" in home)
+require("首页日期位于主标题上方并保留自然换行", home.index("TextView homeDate") < home.index("TextView homeTitle") and "LinearLayout homeHeading = new LinearLayout(this)" in home)
+require("首页日期标题采用固定纵向层级和8dp间距", "homeHeading.setOrientation(LinearLayout.VERTICAL)" in home and "dimen(R.dimen.ds_home_heading_gap)" in home)
+require("设计规范与首页层级、启动器图标放大规则一致", "首页日期在主标题上方" in DESIGN and "中央图形放大约15%并保持居中" in DESIGN)
 require("无持仓摘要精简说明但继续区分未知金额与零值", "添加持仓后显示估算；未知金额不按 ¥0 计入。" in home and '"暂无数据"' in home)
 require("首页指标单元居中并保持48dp行高", "ds_overview_metric_row_min_height" in home and "cell.setGravity(Gravity.CENTER)" in home)
 require("通用文字样式遵守设计令牌的11sp元信息字号下限", "ds_type_metadata" in MAIN and "Math.max(size, metadataSize)" in MAIN)
