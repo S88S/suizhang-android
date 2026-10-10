@@ -271,6 +271,32 @@ final class LedgerDatabase extends SQLiteOpenHelper {
         db.update("dividends", cv, "_id=?", new String[]{String.valueOf(id)});
         if (actualReceivedAmount != null) adjustCostForDividend(db, holdingId, actualReceivedAmount - (hadAmount ? oldAmount : 0d));
     }
+    /**
+     * Marks every listed dividend as received in one transaction, leaving received_amount null.
+     *
+     * <p>Deliberately does not write a received amount: markDividendReceived feeds the amount into
+     * adjustCostForDividend, so filling it in would silently rewrite holding cost. A batch action
+     * that the user cannot itemise should not move money. Amounts stay editable one by one.
+     *
+     * @return how many rows actually changed.
+     */
+    int markReceivedBatch(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) return 0;
+        ContentValues cv = new ContentValues();
+        cv.put("status", "received");
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            int changed = 0;
+            for (Long id : ids) {
+                if (id == null || id <= 0) continue;
+                if (db.update("dividends", cv, "_id=? AND status!='received'", new String[]{String.valueOf(id)}) > 0) changed++;
+            }
+            db.setTransactionSuccessful();
+            return changed;
+        } finally { db.endTransaction(); }
+    }
+
     void deleteHolding(long id) {
         SQLiteDatabase db = getWritableDatabase(); db.beginTransaction();
         try { db.delete("dividends", "holding_id=?", new String[]{String.valueOf(id)}); db.delete("transactions", "holding_id=?", new String[]{String.valueOf(id)}); db.delete("holdings", "_id=?", new String[]{String.valueOf(id)}); db.delete("app_settings", "key=?", new String[]{"dividend_forecast_" + id}); db.setTransactionSuccessful(); }

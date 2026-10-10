@@ -881,6 +881,12 @@ public class MainActivity extends AppCompatActivity {
         overview.addView(text("已到账  " + formatAmounts(summary.receivedByCurrency()), 12, DIVIDEND, true), margin(0, 8, 0, 0));
         overview.addView(text("预计 / 待收  " + formatAmounts(summary.estimatedByCurrency()), 12, INK, true), margin(0, 4, 0, 0));
         overview.addView(text("按币种分别统计，不做汇率换算；未到账事件保留预计口径，正式公告、历史推算与手工记录请在月历查看。", 10, MUTED, false), margin(0, 6, 0, 0));
+        int pendingCount = countPendingReceived(rows);
+        if (pendingCount > 0) {
+            overview.addView(actionButton("批量确认到账（" + pendingCount + " 笔）", false,
+                    () -> confirmMarkReceivedBatch(rows)), margin(0, 8, 0, 0));
+            overview.addView(text("只把状态改为已到账，不填写实收金额，因此不会触发分红摊薄成本。金额仍需在月历逐笔补录。", 10, MUTED, false), margin(0, 5, 0, 0));
+        }
         content.addView(overview, margin(0, 0, 0, 10));
 
         LinearLayout legend = row(); legend.setGravity(Gravity.CENTER_VERTICAL);
@@ -915,6 +921,45 @@ public class MainActivity extends AppCompatActivity {
         monthCard.setContentDescription(year + "年" + monthIndex + "月，" + monthSummary.eventCount() + "项收息事件，" + calendarMonthSpeech(monthSummary) + "，点按查看月历");
         monthCard.setOnClickListener(v -> { year = summary.year; month = monthIndex; selectedDay = null; calendarYearView = false; render(); });
         content.addView(monthCard, margin(0, 0, 0, 6));
+    }
+
+    private int countPendingReceived(JSONArray rows) {
+        if (rows == null) return 0;
+        int count = 0;
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject row = rows.optJSONObject(i);
+            if (row != null && !"received".equals(row.optString("status"))) count++;
+        }
+        return count;
+    }
+
+    /** Confirms arrival for every unfinished dividend in the given year. Amounts are left untouched. */
+    private void confirmMarkReceivedBatch(JSONArray rows) {
+        ArrayList<Long> ids = new ArrayList<>();
+        ArrayList<String> names = new ArrayList<>();
+        if (rows != null) for (int i = 0; i < rows.length(); i++) {
+            JSONObject row = rows.optJSONObject(i);
+            if (row == null || "received".equals(row.optString("status"))) continue;
+            ids.add(row.optLong("_id"));
+            String label = row.optString("holding_name", row.optString("code", "持仓"));
+            names.add(label + " " + amount(row.optString("currency", "CNY"), row.optDouble("total")));
+        }
+        if (ids.isEmpty()) { toast("没有待确认的记录"); return; }
+        LinearLayout f = form();
+        f.addView(text("将把 " + ids.size() + " 笔分红标记为已到账：", 12, INK, false));
+        LinearLayout list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL);
+        for (String name : names) list.addView(text(name, 11, MUTED, false), margin(0, 2, 0, 0));
+        f.addView(list, margin(0, 6, 0, 0));
+        f.addView(text("不填写实收金额，因此不会改动持仓成本；之后可在月历逐笔补录金额。", 11, MUTED, false), margin(0, 8, 0, 0));
+        new MaterialAlertDialogBuilder(this).setTitle("确认批量到账")
+                .setMessage("请先核对券商流水，确认这些分红确实已入账。")
+                .setView(wrapForm(f))
+                .setNegativeButton("取消", null)
+                .setPositiveButton("确认 " + ids.size() + " 笔", (d, w) -> {
+                    int changed = db.markReceivedBatch(ids);
+                    render();
+                    toast(changed > 0 ? "已确认 " + changed + " 笔到账" : "没有可更新的记录");
+                }).show();
     }
 
     private View calendarAmountBar(CalendarYearSummary.Amounts amounts, double maximum) {
