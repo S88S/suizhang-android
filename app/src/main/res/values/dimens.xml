@@ -35,6 +35,7 @@
     <dimen name="ds_nav_divider_height">1dp</dimen>
     <dimen name="ds_card_elevation">1dp</dimen>
     <dimen name="ds_navigation_elevation">3dp</dimen>
+    <dimen name="ds_navigation_label">11sp</dimen>
     <dimen name="ds_type_brand">24sp</dimen>
     <dimen name="ds_type_page_title">24sp</dimen>
     <dimen name="ds_type_section_title">16sp</dimen>

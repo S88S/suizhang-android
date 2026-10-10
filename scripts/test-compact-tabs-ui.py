@@ -19,7 +19,7 @@ def section(start: str, end: str) -> str:
     finish = main.index(end, begin)
     return main[begin:finish]
 
-render = section("private void render()", "private com.google.android.material.bottomnavigation.BottomNavigationView bottomNav()")
+render = section("private void render()", "private MiuixBottomNavigatorView bottomNav()")
 holdings = section("private void showHoldings()", "private LinearLayout metric(")
 calendar = section("private void showCalendar()", "private CardColumn calendarControlPanel()")
 calendar_controls = section("private CardColumn calendarControlPanel()", "private MaterialButton calendarNavButton(")

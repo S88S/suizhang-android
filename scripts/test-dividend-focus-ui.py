@@ -15,7 +15,7 @@ def require(label: str, condition: bool) -> None:
     print("PASS " + label)
 
 home = section("private void showHome()", "private void addTaxToggle()")
-render = section("private void render()", "private com.google.android.material.bottomnavigation.BottomNavigationView bottomNav()")
+render = section("private void render()", "private MiuixBottomNavigatorView bottomNav()")
 quick = section("private void showHoldingQuickActions()", "private void addTaxToggle()")
 holdings = section("private void showHoldings()", "private LinearLayout metric(")
 calendar = section("private void showCalendar()", "private void addDividendRow(")

@@ -48,10 +48,10 @@ import com.google.android.material.button.MaterialButtonToggleGroup;
 import com.google.android.material.datepicker.MaterialDatePicker;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
-import com.google.android.material.navigation.NavigationBarView;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 import com.hchen.himiuix.MiuixBasicView;
+import com.hchen.himiuix.MiuixBottomNavigatorView;
 import com.hchen.himiuix.MiuixListView;
 import com.hchen.himiuix.widget.MiuixCardView;
 import com.hchen.himiuix.callback.OnChooseItemListener;
@@ -299,20 +299,15 @@ public class MainActivity extends AppCompatActivity {
             default: showHome();
         }
     }
-    private com.google.android.material.bottomnavigation.BottomNavigationView bottomNav() {
-        com.google.android.material.bottomnavigation.BottomNavigationView nav = new com.google.android.material.bottomnavigation.BottomNavigationView(this);
+    private MiuixBottomNavigatorView bottomNav() {
+        MiuixBottomNavigatorView nav = new MiuixBottomNavigatorView(this);
         nav.inflateMenu(R.menu.bottom_navigation);
-        nav.setLabelVisibilityMode(NavigationBarView.LABEL_VISIBILITY_LABELED);
-        nav.setItemHorizontalTranslationEnabled(false);
+        nav.setTitleSize(navLabelSp());
+        nav.setIconSize(dp(22));
         nav.setBackgroundColor(getColor(R.color.app_surface));
-        int[][] itemStates = new int[][]{new int[]{android.R.attr.state_checked}, new int[]{}};
-        int[] itemColors = new int[]{getColor(R.color.app_primary), getColor(R.color.app_on_surface_variant)};
-        ColorStateList navColors = new ColorStateList(itemStates, itemColors);
-        nav.setItemIconTintList(navColors); nav.setItemTextColor(navColors);
-        nav.setElevation(dimen(R.dimen.ds_navigation_elevation));
-        nav.setSelectedItemId("holdings".equals(activeTab) ? R.id.nav_holdings : "calendar".equals(activeTab) ? R.id.nav_calendar : ("more".equals(activeTab) || "stats".equals(activeTab) || "plan".equals(activeTab)) ? R.id.nav_more : R.id.nav_home);
-        nav.setOnItemSelectedListener(item -> {
-            int selectedItem = item.getItemId();
+        nav.check("holdings".equals(activeTab) ? R.id.nav_holdings : "calendar".equals(activeTab) ? R.id.nav_calendar : ("more".equals(activeTab) || "stats".equals(activeTab) || "plan".equals(activeTab)) ? R.id.nav_more : R.id.nav_home);
+        nav.setOnItemSelectedListener((item, fromUser) -> {
+            int selectedItem = item.getId();
             if (selectedItem == R.id.nav_holdings) activeTab = "holdings";
             else if (selectedItem == R.id.nav_calendar) activeTab = "calendar";
             else if (selectedItem == R.id.nav_more) activeTab = "more";
@@ -324,7 +319,16 @@ public class MainActivity extends AppCompatActivity {
         return nav;
     }
 
-    private void showHome() {
+    /**
+ * Bottom-navigation label size in sp.
+ *
+ * <p>MiuixBottomNavigatorView#setTitleSize forwards straight to TextView#setTextSize, which is
+ * scaled-sp, so passing a pixel value would ignore the user's font-size preference. The token is
+ * declared in sp for the same reason.
+ */
+private float navLabelSp() { return getResources().getDimension(R.dimen.ds_navigation_label) / getResources().getDisplayMetrics().scaledDensity; }
+
+private void showHome() {
         LinearLayout homeHeading = new LinearLayout(this); homeHeading.setOrientation(LinearLayout.VERTICAL);
         TextView homeDate = text(LocalDate.now().format(DateTimeFormatter.ofPattern("M月d日 · EEE", Locale.CHINA)), 12, MUTED, false);
         homeDate.setGravity(Gravity.CENTER_VERTICAL);

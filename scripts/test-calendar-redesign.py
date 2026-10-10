@@ -24,7 +24,7 @@ controls = section("private CardColumn calendarControlPanel()", "private Materia
 toggle = section("private MaterialButtonToggleGroup calendarViewToggle()", "private MaterialButton calendarNavButton(")
 context_button = section("private MaterialButton calendarContextButton(", "private void showCalendarYear()")
 calendar = section("private void showCalendar()", "private CardColumn calendarControlPanel()")
-render = section("private void render()", "private com.google.android.material.bottomnavigation.BottomNavigationView bottomNav()")
+render = section("private void render()", "private MiuixBottomNavigatorView bottomNav()")
 
 require("新包版本递增且应用身份可覆盖升级", "versionName '1.4.7'" in BUILD and re.search(r"versionCode\s+21\b", BUILD) is not None and "applicationId 'cn.suizhang.ledger'" in BUILD and "applicationIdSuffix '.debug'" in BUILD)
 require("继续使用现有 Material Components Views 依赖", "com.google.android.material:material:1.14.0" in BUILD and "MaterialButtonToggleGroup" in MAIN and "androidx.compose" not in BUILD)

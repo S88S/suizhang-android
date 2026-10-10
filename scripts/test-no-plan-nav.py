@@ -25,7 +25,11 @@ item_ids = [item.attrib[android_id].split("/")[-1] for item in items]
 require("底部菜单恰为总览、持仓、日历、更多四项并保持顺序", item_ids == ["nav_home", "nav_holdings", "nav_calendar", "nav_more"])
 require("菜单与主界面不再引用规划导航资源", "nav_plan" not in menu_text and "nav_plan" not in activity)
 require("规划不再有可触达的 tab 路由", 'case "plan":' not in activity)
-require("四栏显示标签且关闭移动缩放以均匀排布", "LABEL_VISIBILITY_LABELED" in activity and "setItemHorizontalTranslationEnabled(false)" in activity)
+require("四栏标签显式设置字号且等宽均匀排布",
+        "MiuixBottomNavigatorView bottomNav()" in activity
+        and "nav.setTitleSize(" in activity
+        and "nav.setIconSize(" in activity
+        and "nav.inflateMenu(R.menu.bottom_navigation)" in activity)
 require("规划专属菜单文案和图标资源引用已移除", "nav_plan" not in strings_text and not (root / "app/src/main/res/drawable/ic_nav_plan.xml").exists())
 require("SQLite schema 升至 4 且不删除支出目标/备份", re.search(r"DB_VERSION\s*=\s*4", database) is not None)
 require("支出目标表及其完整 JSON 备份字段仍保留", 'CREATE TABLE IF NOT EXISTS expense_goals' in database and 'root.put("expense_goals"' in database)
