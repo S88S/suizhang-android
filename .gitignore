@@ -14,3 +14,10 @@ local.properties
 *.log
 /delivery/
 **/screenshot-holdings-*.json
+
+# Signing material: a committed keystore lets anyone publish updates as you,
+# and losing one means the app can never be updated again. Neither is
+# recoverable from git history, so keep them out.
+*.jks
+*.keystore
+keystore.properties
