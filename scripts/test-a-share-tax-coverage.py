@@ -93,4 +93,31 @@ require("A 股自定义税率分红仍沿用事件已保存费率", 'taxHolding.
 require("月历和首页未来分红查询都附带持仓市场/税务模式/现量", "h.tax_mode AS holding_tax_mode" in calendar_query and "h.quantity AS holding_quantity" in calendar_query and "h.market AS holding_market,h.tax_mode AS holding_tax_mode,h.quantity AS holding_quantity" in db)
 require("覆盖和日期边界测试已接入核心 FinanceMathTest", "hasCompleteTaxLotCoverage" in tests and "超过一个月一天" in tests and "超过一年一天" in tests)
 require("数据库仍为 schema 4，没有引入 schema 5", "DB_VERSION = 4" in db and "oldVersion < 5" not in db)
+
+# Opening position is cached per holding to avoid re-reading the same row three times per tax
+# calculation. The cache must never outlive a write, otherwise a stale opening quantity or
+# opened_on would silently change the tax result.
+opening_readers = [
+    db[db.index("double estimatedQuantityAt("):db.index("/** One trade row in the FIFO replay")],
+    db[db.index("JSONArray taxLotsAt("):db.index("boolean hasCompleteTaxLotCoverage(")],
+    coverage_method,
+]
+require("期初持仓字段走缓存读取，不再逐处直查 holdings",
+       all("openingAt(getReadableDatabase(), holdingId)" in block for block in opening_readers)
+       and 'SELECT initial_quantity,opened_on FROM holdings WHERE _id=?' not in
+           db[db.index("double estimatedQuantityAt("):db.index("boolean hasCompleteTaxLotCoverage(")])
+save_holding = db[db.index("long saveHolding("):db.index("private void addIndexIfMissing(")]
+delete_holding = db[db.index("void deleteHolding(long id)"):db.index("long addDividend(")]
+import_json = db[db.index("void importJson(String json)"):db.index("private JSONArray requiredArray(")]
+require("缓存仅在写事务结束后清空，且新增/修改/删除/备份恢复四条路径都覆盖",
+       "void clearOpeningCache() { openingCache.clear(); }" in db
+       and all("clearOpeningCache();" in block
+               for block in (save_holding, delete_holding, import_json))
+       and "finally { db.endTransaction(); clearOpeningCache(); }" in db)
+require("estimatedQuantityAt 与 taxLotsAt 共用同一份按日期过滤的交易读取",
+       "private ArrayList<TransactionRow> transactionsUpTo(long holdingId, String date)" in db
+       and db.count("transactionsUpTo(holdingId, date)") >= 2
+       and db.count("SELECT side,quantity,trade_date FROM transactions WHERE holding_id=? AND trade_date<=?") == 1)
+require("缓存缺失行时也记为负值，避免每轮重复查询同一只不存在的持仓",
+       "openingCache.put(holdingId, new Opening(-1d, \"\"))" in db)
 print("通过：A 股税批完整性与边界 fixture/source-wiring 回归")

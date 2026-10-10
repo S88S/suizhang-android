@@ -27,9 +27,32 @@ final class LedgerDatabase extends SQLiteOpenHelper {
     LedgerDatabase(Context context) {
         super(context, DB_NAME, null, DB_VERSION);
         // WAL lets the render path read while a write transaction is open. Must be set before the
-        // first database is opened, so it belongs here rather than in onConfigure().
+        // first database is opened, so it belongs here rather than onConfigure().
         setWriteAheadLoggingEnabled(true);
     }
+
+    /**
+     * Opening position (initial_quantity, opened_on) per holding. Tax estimation walks the FIFO
+     * lots for one holding three separate times and each pass re-read the same holdings row, so a
+     * per-render cache removes two thirds of those reads. Cleared on every write; see clearOpeningCache.
+     */
+    private final Map<Long, Opening> openingCache = new HashMap<>();
+    private static final class Opening { final double quantity; final String openedOn;
+        Opening(double q, String o) { quantity = q; openedOn = o; } }
+
+    /** Returns the opening position for a holding, or null when the row is missing. */
+    private Opening openingAt(SQLiteDatabase db, long holdingId) {
+        Opening cached = openingCache.get(holdingId);
+        if (cached != null) return cached.quantity < 0d ? null : cached;
+        try (Cursor c = db.rawQuery("SELECT initial_quantity,opened_on FROM holdings WHERE _id=?", new String[]{String.valueOf(holdingId)})) {
+            if (!c.moveToFirst()) { openingCache.put(holdingId, new Opening(-1d, "")); return null; }
+            Opening row = new Opening(c.getDouble(0), c.getString(1) == null ? "" : c.getString(1));
+            openingCache.put(holdingId, row);
+            return row;
+        }
+    }
+
+    private void clearOpeningCache() { openingCache.clear(); }
 
     @Override public synchronized void onCreate(SQLiteDatabase db) {
         createCore(db);
@@ -206,7 +229,7 @@ final class LedgerDatabase extends SQLiteOpenHelper {
                 if (!code.trim().isEmpty()) addIndexIfMissing(db, code.trim(), name.trim(), market);
                 db.setTransactionSuccessful();
                 return newId;
-            } finally { db.endTransaction(); }
+            } finally { db.endTransaction(); clearOpeningCache(); }
         }
         SQLiteDatabase db = getWritableDatabase(); db.beginTransaction();
         try {
@@ -221,7 +244,7 @@ final class LedgerDatabase extends SQLiteOpenHelper {
             db.update("transactions", reassigned, "holding_id=?", new String[]{String.valueOf(id)});
             if (!code.trim().isEmpty()) addIndexIfMissing(db, code.trim(), name.trim(), market);
             db.setTransactionSuccessful();
-        } finally { db.endTransaction(); }
+        } finally { db.endTransaction(); clearOpeningCache(); }
         return id;
     }
     private void addIndexIfMissing(SQLiteDatabase db, String code, String name, String market) {
@@ -251,7 +274,7 @@ final class LedgerDatabase extends SQLiteOpenHelper {
     void deleteHolding(long id) {
         SQLiteDatabase db = getWritableDatabase(); db.beginTransaction();
         try { db.delete("dividends", "holding_id=?", new String[]{String.valueOf(id)}); db.delete("transactions", "holding_id=?", new String[]{String.valueOf(id)}); db.delete("holdings", "_id=?", new String[]{String.valueOf(id)}); db.delete("app_settings", "key=?", new String[]{"dividend_forecast_" + id}); db.setTransactionSuccessful(); }
-        finally { db.endTransaction(); }
+        finally { db.endTransaction(); clearOpeningCache(); }
     }
     long addDividend(long holdingId, long accountId, double perShare, double total, String currency,
                      String recordDate, String exDate, String payDate, String status, double taxRate,
@@ -305,46 +328,54 @@ final class LedgerDatabase extends SQLiteOpenHelper {
     }
 
     double estimatedQuantityAt(long holdingId, String date) {
-        double quantity = 0;
-        String openedOn = "";
-        try (Cursor c = getReadableDatabase().rawQuery("SELECT initial_quantity,opened_on FROM holdings WHERE _id=?", new String[]{String.valueOf(holdingId)})) {
-            if (!c.moveToFirst()) return 0;
-            openedOn = c.getString(1) == null ? "" : c.getString(1);
-            if (openedOn.compareTo(date) <= 0) quantity = c.getDouble(0);
-        }
-        try (Cursor c = getReadableDatabase().rawQuery("SELECT side,quantity,trade_date FROM transactions WHERE holding_id=? AND trade_date<=? ORDER BY trade_date,_id", new String[]{String.valueOf(holdingId), date})) {
-            while (c.moveToNext()) {
-                if (c.getString(2).compareTo(openedOn) < 0) continue;
-                double q = c.getDouble(1);
-                quantity = "买入".equals(c.getString(0)) ? quantity + q : Math.max(0, quantity - q);
-            }
+        Opening opening = openingAt(getReadableDatabase(), holdingId);
+        if (opening == null) return 0;
+        String openedOn = opening.openedOn;
+        double quantity = openedOn.compareTo(date) <= 0 ? opening.quantity : 0d;
+        for (TransactionRow row : transactionsUpTo(holdingId, date)) {
+            if (row.tradeDate.compareTo(openedOn) < 0) continue;
+            quantity = row.buy ? quantity + row.quantity : Math.max(0d, quantity - row.quantity);
         }
         return quantity;
     }
 
+    /** One trade row in the FIFO replay; shared by estimatedQuantityAt and taxLotsAt. */
+    private static final class TransactionRow { final double quantity; final String tradeDate; final boolean buy;
+        TransactionRow(String side, double quantity, String tradeDate) {
+            this.quantity = quantity; this.tradeDate = tradeDate; this.buy = "买入".equals(side);
+        }
+    }
+
+    /**
+     * Trades for a holding on or before {@code date}, oldest first. Both estimatedQuantityAt and
+     * taxLotsAt need the identical ordered set, so it is read once and handed to both.
+     */
+    private ArrayList<TransactionRow> transactionsUpTo(long holdingId, String date) {
+        ArrayList<TransactionRow> rows = new ArrayList<>();
+        try (Cursor c = getReadableDatabase().rawQuery("SELECT side,quantity,trade_date FROM transactions WHERE holding_id=? AND trade_date<=? ORDER BY trade_date,_id", new String[]{String.valueOf(holdingId), date})) {
+            while (c.moveToNext()) rows.add(new TransactionRow(c.getString(0), c.getDouble(1), c.getString(2)));
+        }
+        return rows;
+    }
+
     JSONArray taxLotsAt(long holdingId, String date) {
         JSONArray lots = new JSONArray();
-        double opening = 0; String openedOn = "";
-        try (Cursor c = getReadableDatabase().rawQuery("SELECT initial_quantity,opened_on FROM holdings WHERE _id=?", new String[]{String.valueOf(holdingId)})) {
-            if (!c.moveToFirst()) return lots;
-            openedOn = c.getString(1) == null ? "" : c.getString(1); opening = c.getDouble(0);
-        }
+        Opening openingRow = openingAt(getReadableDatabase(), holdingId);
+        if (openingRow == null) return lots;
+        String openedOn = openingRow.openedOn; double opening = openingRow.quantity;
         ArrayList<TaxLot> work = new ArrayList<>();
         if (opening > 0 && !openedOn.isEmpty() && openedOn.compareTo(date) <= 0) work.add(new TaxLot(opening, openedOn));
-        try (Cursor c = getReadableDatabase().rawQuery("SELECT side,quantity,trade_date FROM transactions WHERE holding_id=? AND trade_date<=? ORDER BY trade_date,_id", new String[]{String.valueOf(holdingId), date})) {
-            while (c.moveToNext()) {
-                String side = c.getString(0), tradeDate = c.getString(2); double q = c.getDouble(1);
-                if (tradeDate.compareTo(openedOn) < 0) continue;
-                if ("买入".equals(side)) work.add(new TaxLot(q, tradeDate));
-                else {
-                    double remaining = q;
+        for (TransactionRow row : transactionsUpTo(holdingId, date)) {
+            if (row.tradeDate.compareTo(openedOn) < 0) continue;
+            if (row.buy) work.add(new TaxLot(row.quantity, row.tradeDate));
+            else {
+                    double remaining = row.quantity;
                     for (int i = 0; i < work.size() && remaining > 1e-8; i++) {
                         TaxLot lot = work.get(i); double used = Math.min(lot.quantity, remaining);
                         lot.quantity -= used; remaining -= used;
                     }
                     for (int i = work.size() - 1; i >= 0; i--) if (work.get(i).quantity <= 1e-8) work.remove(i);
                 }
-            }
         }
         for (TaxLot lot : work) if (lot.quantity > 1e-8) {
             org.json.JSONObject row = new org.json.JSONObject();
@@ -357,11 +388,10 @@ final class LedgerDatabase extends SQLiteOpenHelper {
                                      boolean compareHoldingQuantity) {
         LocalDate asOf = strictIsoDate(date);
         if (asOf == null) return false;
-        double openingQuantity; String openedOn;
-        try (Cursor c = getReadableDatabase().rawQuery("SELECT initial_quantity,opened_on FROM holdings WHERE _id=?", new String[]{String.valueOf(holdingId)})) {
-            if (!c.moveToFirst()) return false;
-            openingQuantity = c.getDouble(0); openedOn = c.getString(1) == null ? "" : c.getString(1);
-        }
+        Opening openingRow = openingAt(getReadableDatabase(), holdingId);
+        if (openingRow == null) return false;
+        double openingQuantity = openingRow.quantity;
+        String openedOn = openingRow.openedOn;
         if (!Double.isFinite(openingQuantity) || openingQuantity < 0d) return false;
         LocalDate openingDate = openedOn.isEmpty() ? null : strictIsoDate(openedOn);
         if ((!openedOn.isEmpty() && openingDate == null) || (openingQuantity > 1e-8 && openingDate == null)) return false;
@@ -491,7 +521,7 @@ final class LedgerDatabase extends SQLiteOpenHelper {
                 db.insert("accounts", null, initial);
             }
             db.setTransactionSuccessful();
-        } finally { db.endTransaction(); }
+        } finally { db.endTransaction(); clearOpeningCache(); }
     }
 
     private JSONArray requiredArray(JSONObject root, String name) throws JSONException {
