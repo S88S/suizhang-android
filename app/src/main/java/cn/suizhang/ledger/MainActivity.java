@@ -1,11 +1,17 @@
 package cn.suizhang.ledger;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
+import android.Manifest;
+import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.content.Context;
 import android.content.Intent;
@@ -13,6 +19,7 @@ import android.content.res.ColorStateList;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
+import android.os.Build;
 import android.provider.MediaStore;
 import android.os.Bundle;
 import android.os.Handler;
@@ -26,6 +33,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.view.WindowManager;
+import android.util.Log;
 import android.util.TypedValue;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
@@ -113,6 +121,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean calendarYearView;
     private boolean taxNet;
     private boolean darkMode;
+    private int lastWidthDp = -1, lastHeightDp = -1;
     private Typeface appTypeface = Typeface.DEFAULT;
     private final DecimalFormat moneyFormat = new DecimalFormat("#,##0.00");
 
@@ -127,7 +136,7 @@ public class MainActivity extends AppCompatActivity {
         taxNet = "net".equals(db.setting("tax_display", "gross"));
         if (savedInstanceState != null) {
             String restoredTab = savedInstanceState.getString("ui_active_tab", "home");
-            activeTab = ("home".equals(restoredTab) || "holdings".equals(restoredTab) || "calendar".equals(restoredTab) || "more".equals(restoredTab) || "stats".equals(restoredTab)) ? restoredTab : "home";
+            activeTab = ("home".equals(restoredTab) || "holdings".equals(restoredTab) || "calendar".equals(restoredTab) || "more".equals(restoredTab) || "stats".equals(restoredTab) || "plan".equals(restoredTab)) ? restoredTab : "home";
             selectedAccount = savedInstanceState.getLong("ui_selected_account", 0);
             year = savedInstanceState.getInt("ui_calendar_year", year);
             month = savedInstanceState.getInt("ui_calendar_month", month);
@@ -135,9 +144,48 @@ public class MainActivity extends AppCompatActivity {
             selectedDay = savedDay > 0 ? savedDay : null;
             calendarYearView = savedInstanceState.getBoolean("ui_calendar_year_view", false);
         }
-        getWindow().setStatusBarColor(CREAM); getWindow().setNavigationBarColor(getColor(R.color.app_surface));
         darkMode = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
-        getWindow().getDecorView().setSystemUiVisibility(darkMode ? 0 : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+        lastWidthDp = getResources().getConfiguration().screenWidthDp;
+        lastHeightDp = getResources().getConfiguration().screenHeightDp;
+        refreshSystemBars();
+        scheduleDividendReminder();
+        render();
+    }
+
+    /** Registers the daily local reminder and asks for notification permission on Android 13+. */
+    private void scheduleDividendReminder() {
+        try {
+            DividendReminderWorker.schedule(this);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                    && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED) {
+                reminderPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
+            }
+        } catch (Exception e) { Log.w("Suizhang", "Reminder scheduling skipped", e); }
+    }
+
+    private final ActivityResultLauncher<String> reminderPermissionLauncher =
+            registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
+                if (!granted) toast("未授予通知权限，分红提醒不会弹出；可稍后在系统设置中开启。");
+            });
+
+    /** Applies light/dark system bar icons through the current compat API. */
+    private void refreshSystemBars() {
+        WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        controller.setAppearanceLightStatusBars(!darkMode);
+        controller.setAppearanceLightNavigationBars(!darkMode);
+    }
+
+    @Override public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        boolean nextDark = (newConfig.uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        boolean sameSize = newConfig.screenWidthDp == lastWidthDp && newConfig.screenHeightDp == lastHeightDp;
+        lastWidthDp = newConfig.screenWidthDp; lastHeightDp = newConfig.screenHeightDp;
+        // Skip the rebuild only when nothing that affects layout changed (e.g. locale-only config changes).
+        if (nextDark == darkMode && sameSize && content != null) return;
+        darkMode = nextDark;
+        loadColors();
+        refreshSystemBars();
         render();
     }
     @Override protected void onSaveInstanceState(Bundle outState) {
@@ -197,6 +245,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean isZipFile(byte[] bytes) { return bytes != null && bytes.length >= 2 && bytes[0] == 'P' && bytes[1] == 'K'; }
 
     private void render() {
+        loadColors();
         shell = new LinearLayout(this); shell.setOrientation(LinearLayout.VERTICAL); shell.setBackgroundColor(CREAM); shell.setFitsSystemWindows(false);
         ViewCompat.setOnApplyWindowInsetsListener(shell, (view, insets) -> {
             Insets safe = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
@@ -239,8 +288,9 @@ public class MainActivity extends AppCompatActivity {
         }
         shell.addView(pageStage, new LinearLayout.LayoutParams(-1, 0, 1));
         View navDivider = new View(this); navDivider.setBackgroundColor(LINE); navDivider.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        shell.addView(navDivider, new LinearLayout.LayoutParams(-1, dimen(R.dimen.ds_card_stroke_width)));
+        shell.addView(navDivider, new LinearLayout.LayoutParams(-1, dimen(R.dimen.ds_nav_divider_height)));
         shell.addView(bottomNav(), new LinearLayout.LayoutParams(-1, -2)); setContentView(shell); ViewCompat.requestApplyInsets(shell);
+        if ("plan".equals(activeTab)) { showPlan(); return; }
         switch (activeTab) {
             case "holdings": showHoldings(); break;
             case "calendar": showCalendar(); break;
@@ -260,7 +310,7 @@ public class MainActivity extends AppCompatActivity {
         ColorStateList navColors = new ColorStateList(itemStates, itemColors);
         nav.setItemIconTintList(navColors); nav.setItemTextColor(navColors);
         nav.setElevation(dimen(R.dimen.ds_navigation_elevation));
-        nav.setSelectedItemId("holdings".equals(activeTab) ? R.id.nav_holdings : "calendar".equals(activeTab) ? R.id.nav_calendar : ("more".equals(activeTab) || "stats".equals(activeTab)) ? R.id.nav_more : R.id.nav_home);
+        nav.setSelectedItemId("holdings".equals(activeTab) ? R.id.nav_holdings : "calendar".equals(activeTab) ? R.id.nav_calendar : ("more".equals(activeTab) || "stats".equals(activeTab) || "plan".equals(activeTab)) ? R.id.nav_more : R.id.nav_home);
         nav.setOnItemSelectedListener(item -> {
             int selectedItem = item.getItemId();
             if (selectedItem == R.id.nav_holdings) activeTab = "holdings";
@@ -1014,7 +1064,7 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
             final int n = inserted, s = skipped, f = failed; final boolean oldCache = stale; final long dataUpdatedAt = latestUpdated; final String why = warning;
-            runOnUiThread(() -> { if (isFinishing()) return;
+            runOnUiSafely(() -> {
                 if (dataUpdatedAt > 0L) { db.saveSetting("dividend_sync_at", String.valueOf(dataUpdatedAt)); db.saveSetting("dividend_sync_stale", String.valueOf(oldCache)); }
                 render();
                 String msg = "同步完成：新增或更新 " + n + " 项，跳过/重复 " + s + " 项" + (f > 0 ? "，" + f + " 个请求无数据" : "") + (oldCache ? "；部分来自旧缓存" : "");
@@ -1097,6 +1147,9 @@ public class MainActivity extends AppCompatActivity {
         CardColumn stats = card(); stats.setOrientation(LinearLayout.VERTICAL); stats.addView(text("统计报表", 16, INK, true));
         stats.addView(text("预计年分红、成本 YoC、日/月均收入、累计已收与贡献排行；成本不等于市值。", 12, MUTED, false), margin(0, 5, 0, 10));
         stats.addView(actionButton("打开统计报表", true, () -> { activeTab = "stats"; render(); })); content.addView(stats, margin(0, 0, 0, 10));
+        CardColumn plan = card(); plan.setOrientation(LinearLayout.VERTICAL); plan.addView(text("复利与开支目标", 16, INK, true));
+        plan.addView(text("按固定年化参数测算复利，并跟踪股息对生活开支的覆盖；情景测算不代表实际收益。", 12, MUTED, false), margin(0, 5, 0, 10));
+        plan.addView(actionButton("打开复利与开支目标", true, () -> { activeTab = "plan"; render(); })); content.addView(plan, margin(0, 0, 0, 10));
         showCatalogCard(); showBackupCard(); showOpenSourceCard(); showTransactions(); showBoundaries();
     }
     private void showStatsPage() {
@@ -2000,6 +2053,7 @@ public class MainActivity extends AppCompatActivity {
         if ("calendar".equals(activeTab)) return "日历";
         if ("more".equals(activeTab)) return "更多";
         if ("stats".equals(activeTab)) return "统计报表";
+        if ("plan".equals(activeTab)) return "复利与开支目标";
         return "总览";
     }
     private void pageTitle(String title, String subtitle) { content.addView(tokenText(title, R.dimen.ds_type_page_title, INK, true), margin(0, 2, 0, 3)); content.addView(tokenText(subtitle, R.dimen.ds_type_secondary, MUTED, false), margin(0, 0, 0, 11)); }
@@ -2177,8 +2231,8 @@ public class MainActivity extends AppCompatActivity {
         quoteRefreshInFlight = true; lastQuoteRefresh = now;
         dataExecutor.execute(() -> {
             MarketDataClient.Snapshot<MarketDataClient.Quote> snap = marketData.quotes(securities);
-            runOnUiThread(() -> {
-                quoteRefreshInFlight = false; if (isFinishing()) return;
+            runOnUiSafely(() -> {
+                quoteRefreshInFlight = false;
                 for (MarketDataClient.Quote q : snap.rows) quotes.put(q.code.toUpperCase(Locale.ROOT), q);
                 if ("holdings".equals(activeTab)) render();
                 else if (snap.rows.isEmpty() && snap.warning != null) toast(snap.warning);
@@ -2287,5 +2341,20 @@ public class MainActivity extends AppCompatActivity {
     private String accountLabel() { if (selectedAccount == 0) return "全部账户"; JSONArray a = db.accounts(); for (int i = 0; i < a.length(); i++) if (a.optJSONObject(i).optLong("_id") == selectedAccount) return a.optJSONObject(i).optString("name"); selectedAccount = 0; return "全部账户"; }
     private String safeMessage(Exception e) { String m = e.getMessage(); return m == null || m.trim().isEmpty() ? "请检查文件" : m; }
     private void toast(String msg) { Toast.makeText(this, msg, Toast.LENGTH_SHORT).show(); }
+
+    /** Guards a UI-thread callback: a throw inside render() would otherwise crash the app. */
+    private void runOnUiSafely(Runnable action) {
+        runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed()) return;
+            try { action.run(); }
+            catch (Exception e) { Log.w("Suizhang", "UI callback failed", e); toast("操作未完成：" + safeMessage(e)); }
+        });
+    }
+
+    /** Keeps render() failures from propagating out of tab switches and callbacks. */
+    private void renderSafely() {
+        try { render(); }
+        catch (Exception e) { Log.w("Suizhang", "render failed", e); toast("页面刷新失败：" + safeMessage(e)); }
+    }
     private void hideKeyboard(AlertDialog d) { try { InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE); if (imm != null && d != null && d.getCurrentFocus() != null) imm.hideSoftInputFromWindow(d.getCurrentFocus().getWindowToken(), 0); } catch (Exception ignored) { } }
 }

@@ -32,6 +32,7 @@
     <dimen name="ds_market_badge_radius">15dp</dimen>
     <dimen name="ds_calendar_cell_radius">12dp</dimen>
     <dimen name="ds_card_stroke_width">0dp</dimen>
+    <dimen name="ds_nav_divider_height">1dp</dimen>
     <dimen name="ds_card_elevation">1dp</dimen>
     <dimen name="ds_navigation_elevation">3dp</dimen>
     <dimen name="ds_type_brand">24sp</dimen>
