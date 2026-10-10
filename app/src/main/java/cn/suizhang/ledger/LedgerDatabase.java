@@ -24,9 +24,14 @@ final class LedgerDatabase extends SQLiteOpenHelper {
     private static final String DB_NAME = "suizhang-ledger.db";
     private static final int DB_VERSION = 4;
 
-    LedgerDatabase(Context context) { super(context, DB_NAME, null, DB_VERSION); }
+    LedgerDatabase(Context context) {
+        super(context, DB_NAME, null, DB_VERSION);
+        // WAL lets the render path read while a write transaction is open. Must be set before the
+        // first database is opened, so it belongs here rather than in onConfigure().
+        setWriteAheadLoggingEnabled(true);
+    }
 
-    @Override public void onCreate(SQLiteDatabase db) {
+    @Override public synchronized void onCreate(SQLiteDatabase db) {
         createCore(db);
         ContentValues initial = new ContentValues(); initial.put("name", "默认账户"); initial.put("created_at", Instant.now().toString());
         db.insert("accounts", null, initial);
@@ -83,7 +88,7 @@ final class LedgerDatabase extends SQLiteOpenHelper {
         }
     }
 
-    @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
+    @Override public synchronized void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
         if (oldVersion < 2) {
             db.execSQL("ALTER TABLE holdings ADD COLUMN annual_dividend_per_unit REAL NOT NULL DEFAULT 0");
             db.execSQL("ALTER TABLE holdings ADD COLUMN tax_rate REAL NOT NULL DEFAULT 0.10");
