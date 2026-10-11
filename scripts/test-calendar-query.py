@@ -10,6 +10,11 @@ def decode(value: str) -> str:
     return base64.b64decode(value.encode("ascii")).decode("utf-8")
 
 
+if len(sys.argv) < 2:
+    print("SKIP 需要 fixture：用法 test-calendar-query.py <fixture.tsv>")
+    print("     fixture 由 CalendarQuery 侧导出 QUERY\\t<name>\\t<sql-b64>\\t<args-b64> 行，供真机/集成排障使用。")
+    sys.exit(0)
+
 fixture = Path(sys.argv[1])
 queries = {}
 for line in fixture.read_text(encoding="utf-8").splitlines():

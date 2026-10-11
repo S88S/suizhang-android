@@ -1,8 +1,31 @@
 #!/usr/bin/env python3
 """Parser fixtures and source-level import/privacy regression for Eastmoney-style screenshots."""
 from pathlib import Path
+import os
 import subprocess
 import tempfile
+
+
+def java_tool(name: str) -> str:
+    """Locate javac/java via JAVA_HOME or PATH, so the script runs without a preset PATH."""
+    java_home = os.environ.get("JAVA_HOME")
+    if java_home:
+        candidate = Path(java_home) / "bin" / (name + ".exe" if os.name == "nt" else name)
+        if candidate.exists():
+            return str(candidate)
+    found = shutil_which(name)
+    if found:
+        return found
+    raise RuntimeError(
+        f"{name} not found. Set JAVA_HOME to a JDK 21 installation (for example "
+        "C:/Users/<user>/.workbuddy/binaries/java/jdk-21.0.2) or put it on PATH."
+    )
+
+
+def shutil_which(name: str):
+    from shutil import which
+
+    return which(name)
 
 root = Path(__file__).resolve().parents[1]
 main_path = root / "app/src/main/java/cn/suizhang/ledger/MainActivity.java"
@@ -23,8 +46,8 @@ def section(text: str, start: str, end: str) -> str:
 
 with tempfile.TemporaryDirectory(prefix="easternfortune-parser-") as tmp:
     tmp = Path(tmp)
-    subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp), str(parser_path), str(root / "scripts/EasternFortuneHoldingParserTest.java")], check=True)
-    subprocess.run(["java", "-cp", str(tmp), "cn.suizhang.ledger.EasternFortuneHoldingParserTest"], check=True)
+    subprocess.run([java_tool("javac"), "-encoding", "UTF-8", "-d", str(tmp), str(parser_path), str(root / "scripts/EasternFortuneHoldingParserTest.java")], check=True)
+    subprocess.run([java_tool("java"), "-cp", str(tmp), "cn.suizhang.ledger.EasternFortuneHoldingParserTest"], check=True)
 
 ocr_path = section(source, "private void chooseBrokerScreenshot()", "private void beginCatalogSearch()")
 review = section(source, "private void showBrokerOcrReview(EasternFortuneHoldingParser.Result", "private void beginCatalogSearch()")

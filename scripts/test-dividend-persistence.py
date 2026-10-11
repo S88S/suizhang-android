@@ -4,6 +4,7 @@ from pathlib import Path
 import json
 import re
 import sqlite3
+import os
 import tempfile
 
 root = Path(__file__).resolve().parents[1]
@@ -23,8 +24,10 @@ def require(label, condition):
         raise AssertionError("FAIL " + label)
     print("PASS  " + label)
 
-with tempfile.NamedTemporaryFile(suffix=".sqlite") as file:
-    conn = sqlite3.connect(file.name)
+fd, db_path = tempfile.mkstemp(suffix=".sqlite")
+os.close(fd)
+try:
+    conn = sqlite3.connect(db_path)
     conn.execute(holdings_ddl)
     holding_columns = {row[1] for row in conn.execute("PRAGMA table_info(holdings)")}
     require("成本算法字段有加权平均兼容默认值", "cost_method" in holding_columns)
@@ -42,11 +45,14 @@ with tempfile.NamedTemporaryFile(suffix=".sqlite") as file:
     changed = conn.execute("UPDATE holdings SET annual_dividend_per_unit=? WHERE _id=? AND code=? AND market=?", (.9, holding_id, "WRONG", "A股")).rowcount
     require("防止旧异步结果写入已改代码的持仓", changed == 0)
     conn.commit(); conn.close()
-    reopened = sqlite3.connect(file.name)
+    reopened = sqlite3.connect(db_path)
     saved = reopened.execute("SELECT quantity,annual_dividend_per_unit FROM holdings WHERE _id=?", (holding_id,)).fetchone()
     raw_meta = reopened.execute("SELECT value FROM app_settings WHERE key=?", (f"dividend_forecast_{holding_id}",)).fetchone()[0]
     reopened_meta = json.loads(raw_meta)
     require("关闭再打开后每份金额与年总额仍正确", saved == (150.0, .8) and abs(saved[0] * saved[1] - 120) < 1e-9)
     require("重开后历史来源、窗口和更新时间可恢复", reopened_meta["source"] == "historical_estimate" and reopened_meta["years"] == 3 and reopened_meta["updated_at"] > 0)
     reopened.close()
+finally:
+    if os.path.exists(db_path):
+        os.unlink(db_path)
 print("通过：SQLite schema-4 保存/编辑/重开分红预测持久化回归")

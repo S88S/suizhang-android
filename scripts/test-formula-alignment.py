@@ -3,6 +3,7 @@
 from pathlib import Path
 import re
 import sqlite3
+import os
 import tempfile
 
 root = Path(__file__).resolve().parents[1]
@@ -29,8 +30,10 @@ if not upgrade:
     raise AssertionError("未找到 schema-4 升级分支")
 sql = re.findall(r'db\.execSQL\("([^"]+)"\);', upgrade.group(1))
 require("schema-4 有且只有不重写旧账值的两项 ALTER", len(sql) == 2 and all(x.startswith("ALTER TABLE") for x in sql))
-with tempfile.NamedTemporaryFile(suffix=".sqlite") as f:
-    conn = sqlite3.connect(f.name)
+fd, db_path = tempfile.mkstemp(suffix=".sqlite")
+os.close(fd)
+try:
+    conn = sqlite3.connect(db_path)
     conn.execute("CREATE TABLE holdings (_id INTEGER PRIMARY KEY, quantity REAL, cost REAL)")
     conn.execute("CREATE TABLE dividends (_id INTEGER PRIMARY KEY, total REAL)")
     conn.execute("INSERT INTO holdings VALUES(1, 20, 12.345)")
@@ -42,4 +45,7 @@ with tempfile.NamedTemporaryFile(suffix=".sqlite") as f:
     require("旧持仓数量/成本保留且算法默认为加权平均", holding == (20.0, 12.345, "weighted_average"))
     require("旧分红原金额保留，实际到账留空", dividend == (45.67, None))
     conn.close()
+finally:
+    if os.path.exists(db_path):
+        os.unlink(db_path)
 print("通过：schema-4 升级和公式边界离线回归")
