@@ -21,7 +21,7 @@ holdings = section("private void showHoldings()", "private LinearLayout metric("
 calendar = section("private void showCalendar()", "private void addDividendRow(")
 accounts = section("private void showAccountCard()", "private void showTaxSettingsCard()")
 
-require("版本号只升至 1.4.7 / versionCode 21", "versionName '1.4.7'" in gradle and "versionCode 21" in gradle)
+require("版本号只升至 1.4.9 / versionCode 23", "versionName '1.4.9'" in gradle and "versionCode 23" in gradle)
 require("FAB 只在首页固定于导航栏上方右下角", 'if ("home".equals(activeTab))' in render and 'Gravity.END | Gravity.BOTTOM' in render and 'fabParams.setMargins(0, 0, dimen(R.dimen.ds_page_gutter), dp(18))' in render)
 require("首页有滚动底部留白，避免内容遮在 FAB 下", 'dp("home".equals(activeTab) ? 96 : 32)' in render)
 require("FAB 可访问名称和提示语明确", 'setContentDescription("新增持仓：手动新增或识别券商截图")' in render and 'setTooltipText("新增持仓")' in render)

@@ -69,5 +69,9 @@ require("截图识别不新增相机/相册权限，schema 4 仍不存 OCR 原�
         and "android.permission.CAMERA" not in manifest
         and not any(p in manifest for p in ("READ_MEDIA_IMAGES", "READ_EXTERNAL_STORAGE"))
         and "OCR" not in database)
-require("本轮版本仅升至 1.4.7 / code 21", "versionName '1.4.7'" in build and "versionCode 21" in build)
+require("权限清单只有网络与通知两项，通知权限供 WorkManager 分红提醒使用",
+        "android.permission.INTERNET" in manifest
+        and "android.permission.POST_NOTIFICATIONS" in manifest
+        and manifest.count("uses-permission") == 2)
+require("本轮版本仅升至 1.4.9 / code 23", "versionName '1.4.9'" in build and "versionCode 23" in build)
 print("通过：东方财富截图导入路径源码/结构回归完成；源码检查不替代 Android 设备目视测试。")

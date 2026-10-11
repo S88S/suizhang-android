@@ -1,9 +1,12 @@
 # 穗账 Android
 
-**当前源码：1.4.7-debug（versionCode 21）**。延续 1.4.6 的暖麦金/炭灰界面与可选总览指标，新增标准 Excel `.xlsx` 完整账本工作簿，按账户、持仓、分红、交易、支出目标、标的索引和本地设置分表，附编辑说明；支持导入工作簿并保留旧版 JSON 导入兼容。导入有明确的全量替换确认和事务校验，工作簿不会自动上传。包名 `cn.suizhang.ledger.debug`、最低 Android 10/API 29。**公开仓库只同步源码和文档，不包含 APK 或用户私有账本数据。**公式与税务边界见 [`FORMULA_ALIGNMENT_1.4.3.md`](FORMULA_ALIGNMENT_1.4.3.md)，升级说明见 [`UPGRADE_1.4.7.md`](UPGRADE_1.4.7.md)，设计准则见 [`DESIGN.md`](DESIGN.md)，已知问题见 [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md)。
+**当前源码：1.4.9-debug（versionCode 23）**。本版合入两条并行开发线：日历内与总览页各保留一套「已到账批量确认」入口（共用同一个数据库事务，仍只更新到账状态、不填写实收金额、不改动持仓成本）；同时接入 CI 流水线、JUnit 测试源集、release 版 R8 压缩与资源裁剪，并开启 SQLite WAL。界面延续暖麦金/炭灰与可选总览指标。原有 Excel `.xlsx` 完整账本工作簿和旧版 JSON 导入兼容保持不变。导入有明确的全量替换确认和事务校验，工作簿不会自动上传。包名 `cn.suizhang.ledger.debug`、最低 Android 10/API 29。**公开仓库只同步源码和文档，不包含 APK 或用户私有账本数据。**公式与税务边界见 [`FORMULA_ALIGNMENT_1.4.3.md`](FORMULA_ALIGNMENT_1.4.3.md)，升级说明见 [`UPGRADE_1.4.8.md`](UPGRADE_1.4.8.md)，设计准则见 [`DESIGN.md`](DESIGN.md)，已知问题见 [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md)。
 
 ## 主要功能
 
+- **1.4.9 双入口批量确认与工程化加固**：总览页与月历页各有一个「批量确认到账」入口，共用 `markReceivedBatch` 单一事务；只更新 `status='expected'` 的行，重复调用与重复 id 均幂等。新增 GitHub Actions 流水线、JUnit 测试源集、release 开启 R8 代码压缩与资源裁剪，SQLite 开启 WAL。数据库 schema 仍为 4，权限仍只有 INTERNET 与 POST_NOTIFICATIONS。
+
+- **1.4.8 到期分红批量确认**：月历只对当前月份、尚未到账且派息日已到的记录显示批量操作；确认前逐笔核对标的、日期和账本记录金额。操作仅更新到账状态，不填写实收金额、不覆盖已有实收值、不调整持仓成本；需要用于分红摊薄成本的实际金额仍逐笔补录。数据库 schema、权限、数据源、网络请求和“总览、持仓、日历、更多”导航不变。详见 [`UPGRADE_1.4.8.md`](UPGRADE_1.4.8.md)。
 - **1.4.7 Excel 账本工作簿**：一键导出/导入 `.xlsx`，包含使用说明和 7 张数据表；保留各表 ID 关联，便于在 Excel/WPS 查看、筛选与编辑。导入前会提示全量替换，结构或账本关系验证失败时原数据不变；兼容读取旧版 JSON 备份。无新增权限、外部服务或数据库迁移。详见 [`UPGRADE_1.4.7.md`](UPGRADE_1.4.7.md)。
 - **1.4.6 总览与日历精修**：总览改用炭灰主卡，年度分红金额更突出；十二项可选指标中可自定义展示 0–6 项，默认选中成本息率、市值息率、浮动盈亏、净投入、持仓只数和盈亏率，支持恢复默认。多币种不换算；市值/盈亏指标遵从最新行情可用性。日历移除说明与重复账户范围提示，修正分段选中态下沿圆角，并统一月份/年份导航与“回到今天/今年”的轻量样式。数据库 schema 与账本数据格式不变。详见 [`UPGRADE_1.4.6.md`](UPGRADE_1.4.6.md)。
 - **1.4.5 麦金色与 Miuix 风格更新**：浅色暖麦金、深色明金主题统一应用和 HiMiuix 控件色；卡片采用 HiMiuix `MiuixCardView`，已选穗升图标 A 配合金色底；日历登/除/派缩写改为三色圆点与完整图例；公开同步按钮在窄屏/大字号下按字号增高或改为纵向排列。界面字体改为本地 Noto Sans SC Regular；OFL 1.1 许可随包附带，字体静态文件约 8.33 MB，不从网络加载。数据库 schema 与账本数据格式不变。详见 [`UPGRADE_1.4.5.md`](UPGRADE_1.4.5.md)。
@@ -64,6 +67,7 @@ bash scripts/test-market-data.sh
 bash scripts/test-dividend-forecast.sh
 python3 scripts/test-dividend-flow.py
 python3 scripts/test-dividend-persistence.py
+bash scripts/test-batch-received.sh
 python3 scripts/test-formula-alignment.py
 python3 scripts/test-a-share-tax-coverage.py
 python3 scripts/test-backup-safety.py
@@ -80,7 +84,7 @@ python3 scripts/test-calendar-redesign.py
 
 说明：`testDebugUnitTest` Gradle 任务会执行，但当前 app 没有 JUnit 测试源，因此 Gradle 输出为 `NO-SOURCE`；本轮实际断言来自下面列出的项目自带回归脚本。
 
-1.4.7 回归覆盖 Excel 工作表/字段映射、文件大小限制、拒绝公式、旧 JSON 兼容、全量恢复保护，以及 1.4.6 总览/日历、财务/税务和数据源检查。APK 已用 JDK 21、Android SDK Platform 36 与 Gradle 8.13 构建；当前无连接设备或模拟器，未进行运行时点按和屏幕截图验收。
+1.4.8 新增到期分红批量确认的日期候选规则、单事务状态更新、实收金额与持仓成本保护回归；其余回归覆盖 Excel 工作表/字段映射、文件大小限制、拒绝公式、旧 JSON 兼容、全量恢复保护，以及财务/税务、日历和数据源检查。APK 使用 JDK 21、Android SDK Platform 36 与 Gradle 8.13 构建；当前无连接设备或模拟器，未进行运行时点按和屏幕截图验收。
 
 1.3.5 新增离线年度收息汇总用例：跨年/年末边界、空数据、币种分列、已到账/预计分离和年度显示范围；UI 静态回归验证月/年切换、账户范围、12 个月跳转、文字标记与估算语义。
 
