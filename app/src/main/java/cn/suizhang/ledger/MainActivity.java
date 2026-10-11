@@ -97,12 +97,18 @@ public class MainActivity extends AppCompatActivity {
     private static final String HOME_METRIC_DEFAULTS = "cost_yield,market_yield,floating_profit,net_invested,holding_count,profit_rate";
     private static final int HOME_METRIC_LIMIT = 6;
     private static final String[] HOME_METRIC_IDS = {"cost_yield", "market_yield", "floating_profit", "net_invested", "holding_count", "profit_rate", "received_year", "total_cost", "market_value", "monthly_forecast", "daily_forecast", "cumulative_received"};
-    private static final String[] HOME_METRIC_LABELS = {"成本息率", "市值息率", "浮动盈亏", "净投入", "持仓只数", "盈亏率", "今年已收", "总成本", "总市值", "月均预测分红", "日均预测分红", "累计收息"};
+    private static final String[] HOME_METRIC_LABELS = {"成本股息率", "市值股息率", "浮动盈亏", "净投入", "持仓只数", "盈亏率", "今年已收", "总成本", "总市值", "月均预测分红", "日均预测分红", "累计收益"};
+    private static final String[] HOME_METRIC_FORMULAS = {
+            "预测年分红 ÷ 总成本", "预测年分红 ÷ 总市值", "总市值 − 总成本 (T-1)",
+            "买入总额 − 卖出总额", "持有标的的数量", "浮动盈亏 ÷ 总成本 (T-1)",
+            "当年已发分红总额", "各股成本 × 数量之和", "最新价 × 数量之和 (T-1)",
+            "预测年分红 ÷ 12", "预测年分红 ÷ 365", "历史已收分红总额（不扣当年）"
+    };
     private static final String[] HOME_METRIC_CHOICES = {
-            "成本息率  · 预计年分红 ÷ 总成本", "市值息率  · 预计年分红 ÷ 最新市值", "浮动盈亏  · 最新市值 − 持仓成本",
+            "成本股息率  · 预测年分红 ÷ 总成本", "市值股息率  · 预测年分红 ÷ 总市值", "浮动盈亏  · 最新市值 − 持仓成本",
             "净投入  · 买入成交额 − 卖出成交额", "持仓只数  · 当前持有标的数量", "盈亏率  · 浮动盈亏 ÷ 成本",
             "今年已收  · 本年度已确认到账", "总成本  · 当前数量 × 持仓成本", "总市值  · 最新行情；无行情按成本估值",
-            "月均预测分红  · 预计年分红 ÷ 12", "日均预测分红  · 预计年分红 ÷ 365", "累计收息  · 历史已确认到账"
+            "月均预测分红  · 预计年分红 ÷ 12", "日均预测分红  · 预计年分红 ÷ 365", "累计收益  · 历史已确认到账"
     };
     private static final DateTimeFormatter ISO = DateTimeFormatter.ISO_LOCAL_DATE;
 
@@ -420,23 +426,176 @@ private void showHome() {
     private void showOverviewMetricSettings() {
         String saved = db.setting(HOME_METRIC_SETTING, HOME_METRIC_DEFAULTS);
         Set<String> selected = new HashSet<>(Arrays.asList(saved.split(",")));
-        boolean[] checked = new boolean[HOME_METRIC_IDS.length];
-        for (int i = 0; i < HOME_METRIC_IDS.length; i++) checked[i] = selected.contains(HOME_METRIC_IDS[i]);
-        new MaterialAlertDialogBuilder(this).setTitle("设置总览指标")
-                .setMessage("可选 0–6 项，点选添加或取消。选 0 项时隐藏指标栅格；金额按币种分开展示，不做汇率换算。")
-                .setMultiChoiceItems(HOME_METRIC_CHOICES, checked, (dialog, which, isChecked) -> {
-                    checked[which] = isChecked; int count = 0; for (boolean value : checked) if (value) count++;
-                    if (count > HOME_METRIC_LIMIT) {
-                        checked[which] = false; ((AlertDialog) dialog).getListView().setItemChecked(which, false); toast("最多选择 6 项指标");
-                    }
-                })
-                .setNegativeButton("取消", null)
-                .setNeutralButton("恢复默认", (dialog, which) -> { db.saveSetting(HOME_METRIC_SETTING, HOME_METRIC_DEFAULTS); render(); toast("已恢复默认指标"); })
-                .setPositiveButton("保存", (dialog, which) -> {
-                    ArrayList<String> values = new ArrayList<>();
-                    for (int i = 0; i < checked.length; i++) if (checked[i]) values.add(HOME_METRIC_IDS[i]);
-                    db.saveSetting(HOME_METRIC_SETTING, android.text.TextUtils.join(",", values)); render(); toast("总览指标已保存");
-                }).show();
+        ArrayList<String> order = new ArrayList<>();
+        for (String id : HOME_METRIC_IDS) if (selected.contains(id)) order.add(id);
+
+        JSONArray hs = db.holdings(selectedAccount);
+        Map<String, Double> annual = estimatedIncomeByCurrency(false); Map<String, Double> costs = costByCurrency();
+        boolean hasEstimate = hasAnyDividendEstimate();
+        Map<String, String> values = homeMetricValues(hs, annual, costs);
+
+        LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
+        ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true);
+        LinearLayout body = new LinearLayout(this); body.setOrientation(LinearLayout.VERTICAL);
+        body.setPadding(dimen(R.dimen.ds_hero_inset_horizontal), dimen(R.dimen.ds_hero_inset_vertical), dimen(R.dimen.ds_hero_inset_horizontal), dimen(R.dimen.ds_hero_inset_vertical));
+        scroll.addView(body, new FrameLayout.LayoutParams(-1, -2));
+
+        final AlertDialog[] holder = new AlertDialog[1];
+        LinearLayout tip = new LinearLayout(this); tip.setOrientation(LinearLayout.HORIZONTAL);
+        tip.setBackground(roundPx(PRIMARY_CONTAINER, dimen(R.dimen.ds_market_badge_radius), 0, 0));
+        tip.setPadding(dp(10), dp(8), dp(10), dp(8));
+        tip.addView(text("首页顶部汇总区显示哪些数据，你说了算。可选 0–" + HOME_METRIC_LIMIT + " 个，选满后再点会提示上限；选 0 个时汇总区会自动收起。金额按币种分开展示，不做汇率换算。", 12, INK, false), new LinearLayout.LayoutParams(0, -2, 1));
+        body.addView(tip, margin(0, 0, 0, 12));
+
+        LinearLayout previewSection = new LinearLayout(this); previewSection.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout previewHeader = row(); previewHeader.setGravity(Gravity.CENTER_VERTICAL);
+        previewHeader.addView(text("实时预览", 14, INK, true), new LinearLayout.LayoutParams(0, -2, 1));
+        TextView restore = text("恢复默认", 12, ACCENT, false); restore.setPadding(dp(8), dp(4), dp(8), dp(4));
+        restore.setContentDescription("恢复默认六项指标");
+        restore.setOnClickListener(v -> {
+            db.saveSetting(HOME_METRIC_SETTING, HOME_METRIC_DEFAULTS);
+            toast("已恢复默认指标");
+            holder[0].dismiss(); showOverviewMetricSettings();
+        });
+        previewHeader.addView(restore);
+        previewSection.addView(previewHeader, margin(0, 0, 0, 8));
+
+        MiuixCardView previewSurface = new MiuixCardView(this);
+        previewSurface.setCardBackgroundColor(HERO_SURFACE); previewSurface.setRadius(dimen(R.dimen.ds_hero_radius));
+        previewSurface.setCardElevation(dimen(R.dimen.ds_card_elevation));
+        LinearLayout preview = new LinearLayout(this); preview.setOrientation(LinearLayout.VERTICAL);
+        preview.setPadding(dimen(R.dimen.ds_hero_inset_horizontal), dimen(R.dimen.ds_hero_inset_vertical), dimen(R.dimen.ds_hero_inset_horizontal), dimen(R.dimen.ds_hero_inset_vertical));
+        previewSurface.addView(preview, new FrameLayout.LayoutParams(-1, -2));
+        previewSection.addView(previewSurface, margin(0, 0, 0, 6));
+        previewSection.addView(text("预览与首页实际显示一致（已选 0 项时此处收起）。", 11, MUTED, false), margin(2, 0, 0, 0));
+        body.addView(previewSection, margin(0, 0, 0, 14));
+
+        LinearLayout sectionsHost = new LinearLayout(this); sectionsHost.setOrientation(LinearLayout.VERTICAL);
+        body.addView(sectionsHost);
+
+        final Runnable[] redraw = new Runnable[1];
+        redraw[0] = new Runnable() {
+            @Override public void run() { renderMetricSections(sectionsHost, preview, order, values, hasEstimate, annual, redraw[0]); }
+        };
+        redraw[0].run();
+
+        LinearLayout actions = new LinearLayout(this); actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setGravity(Gravity.CENTER_VERTICAL);
+        actions.setPadding(0, dp(4), 0, dp(4));
+        MaterialButton confirm = new MaterialButton(this); confirm.setText("确认保存"); confirm.setAllCaps(false);
+        confirm.setContentDescription("确认保存首页汇总指标");
+        confirm.setOnClickListener(v -> {
+            ArrayList<String> result = new ArrayList<>();
+            for (String id : HOME_METRIC_IDS) if (order.contains(id)) result.add(id);
+            db.saveSetting(HOME_METRIC_SETTING, android.text.TextUtils.join(",", result));
+            holder[0].dismiss(); render(); toast("总览指标已保存");
+        });
+        MaterialButton dismiss = new MaterialButton(this); dismiss.setText("取消"); dismiss.setAllCaps(false);
+        dismiss.setOnClickListener(v -> holder[0].dismiss());
+        actions.addView(confirm, new LinearLayout.LayoutParams(0, -2, 1));
+        actions.addView(dismiss, new LinearLayout.LayoutParams(0, -2, 1));
+
+        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        root.addView(actions, new LinearLayout.LayoutParams(-1, -2));
+
+        AlertDialog dialog = new MaterialAlertDialogBuilder(this).setView(root).setCancelable(true).create();
+        dialog.setCanceledOnTouchOutside(true);
+        holder[0] = dialog;
+        dialog.show();
+        dialog.getWindow().setLayout((int) (getResources().getDisplayMetrics().widthPixels * 0.94f),
+                (int) (getResources().getDisplayMetrics().heightPixels * 0.88f));
+    }
+
+    private void renderMetricSections(LinearLayout host, LinearLayout preview, List<String> order,
+            Map<String, String> values, boolean hasEstimate, Map<String, Double> annual, Runnable redraw) {
+        host.removeAllViews();
+        preview.removeAllViews();
+
+        LinearLayout heading = row(); heading.setGravity(Gravity.CENTER_VERTICAL);
+        heading.addView(text("预测年度分红", 11, HERO_MUTED, false), new LinearLayout.LayoutParams(0, -2, 1));
+        preview.addView(heading);
+        TextView annualValue = tokenText(hasEstimate ? formatAmounts(annual) : "暂无数据", R.dimen.ds_type_hero_metric,
+                hasEstimate ? getColor(R.color.app_dividend_on_hero) : HERO_ON_SURFACE, true);
+        annualValue.setFontFeatureSettings("tnum"); annualValue.setMaxLines(3); preview.addView(annualValue);
+        if (!order.isEmpty()) {
+            addHeroDivider(preview);
+            addOverviewMetricGrid(preview, order, values);
+        } else {
+            addHeroDivider(preview);
+            preview.addView(text("已选 0 项，首页汇总区会收起。", 11, HERO_MUTED, false));
+        }
+
+        LinearLayout chosenTitle = row(); chosenTitle.setGravity(Gravity.CENTER_VERTICAL);
+        chosenTitle.addView(text("已选指标", 14, INK, true), new LinearLayout.LayoutParams(0, -2, 1));
+        chosenTitle.addView(text("已选 " + order.size() + "/" + HOME_METRIC_LIMIT, 11, MUTED, false));
+        host.addView(chosenTitle, margin(0, 0, 0, 4));
+        host.addView(text("点击可取消显示", 11, MUTED, false), margin(0, 0, 0, 6));
+
+        if (order.isEmpty()) {
+            MiuixCardView empty = new MiuixCardView(this);
+            empty.setCardBackgroundColor(getColor(R.color.app_surface)); empty.setRadius(dimen(R.dimen.ds_hero_radius));
+            LinearLayout emptyBody = new LinearLayout(this); emptyBody.setOrientation(LinearLayout.VERTICAL);
+            emptyBody.setPadding(dimen(R.dimen.ds_hero_inset_horizontal), dimen(R.dimen.ds_hero_inset_vertical), dimen(R.dimen.ds_hero_inset_horizontal), dimen(R.dimen.ds_hero_inset_vertical));
+            emptyBody.addView(text("还没有选择任何指标，首页将只显示预测年分红。", 12, MUTED, false));
+            empty.addView(emptyBody, new FrameLayout.LayoutParams(-1, -2));
+            host.addView(empty, margin(0, 0, 0, 8));
+        } else {
+            for (int i = 0; i < order.size(); i++) addMetricRow(host, order, order.get(i), i + 1, values.getOrDefault(order.get(i), "—"), false, redraw);
+        }
+
+        ArrayList<String> rest = new ArrayList<>();
+        for (String id : HOME_METRIC_IDS) if (!order.contains(id)) rest.add(id);
+        LinearLayout restTitle = row(); restTitle.setGravity(Gravity.CENTER_VERTICAL);
+        restTitle.addView(text("可选指标", 14, INK, true), new LinearLayout.LayoutParams(0, -2, 1));
+        restTitle.addView(text(rest.isEmpty() ? "已全部选中" : "待选 " + rest.size() + " 项", 11, MUTED, false));
+        host.addView(restTitle, margin(0, 6, 0, 4));
+        host.addView(text("点击可加入显示", 11, MUTED, false), margin(0, 0, 0, 6));
+        for (String id : rest) addMetricRow(host, order, id, 0, values.getOrDefault(id, "—"), true, redraw);
+    }
+
+    private void addMetricRow(LinearLayout host, List<String> order, String id, int orderNumber, String value, boolean adding, Runnable redraw) {
+        int position = Arrays.asList(HOME_METRIC_IDS).indexOf(id);
+        if (position < 0) return;
+        MiuixCardView surface = new MiuixCardView(this);
+        surface.setCardBackgroundColor(getColor(R.color.app_surface)); surface.setRadius(dimen(R.dimen.ds_hero_radius));
+        LinearLayout rowBody = new LinearLayout(this); rowBody.setOrientation(LinearLayout.HORIZONTAL); rowBody.setGravity(Gravity.CENTER_VERTICAL);
+        rowBody.setPadding(dimen(R.dimen.ds_hero_inset_horizontal), dp(9), dimen(R.dimen.ds_hero_inset_horizontal), dp(9));
+
+        LinearLayout lead = new LinearLayout(this); lead.setOrientation(LinearLayout.VERTICAL); lead.setGravity(Gravity.CENTER);
+        TextView badge = text(adding ? "+" : String.valueOf(orderNumber), 12, adding ? ACCENT : INK, true);
+        badge.setGravity(Gravity.CENTER);
+        lead.addView(badge, new LinearLayout.LayoutParams(dp(22), dp(22)));
+        rowBody.addView(lead, new LinearLayout.LayoutParams(dp(22), -2));
+
+        LinearLayout texts = new LinearLayout(this); texts.setOrientation(LinearLayout.VERTICAL);
+        texts.addView(text(HOME_METRIC_LABELS[position], 13, INK, true));
+        texts.addView(text(HOME_METRIC_FORMULAS[position], 11, MUTED, false), margin(0, 1, 0, 0));
+        rowBody.addView(texts, new LinearLayout.LayoutParams(0, -2, 1));
+
+        TextView figure = text(value, 13, adding ? MUTED : getColor(R.color.app_dividend_on_hero), true);
+        figure.setGravity(Gravity.END); figure.setFontFeatureSettings("tnum"); figure.setMaxLines(2);
+        rowBody.addView(figure, new LinearLayout.LayoutParams(0, -2, 1));
+
+        LinearLayout wrapper = new LinearLayout(this); wrapper.setOrientation(LinearLayout.VERTICAL);
+        surface.addView(rowBody, new FrameLayout.LayoutParams(-1, -2));
+        wrapper.addView(surface);
+        wrapper.setClickable(true); wrapper.setFocusable(true);
+        wrapper.setContentDescription((adding ? "加入指标 " : "取消指标 ") + HOME_METRIC_LABELS[position] + "，当前值 " + value);
+        wrapper.setOnClickListener(v -> toggleMetric(order, id, adding, redraw));
+        host.addView(wrapper, margin(0, 0, 0, 6));
+    }
+
+    private void toggleMetric(List<String> order, String id, boolean adding, Runnable redraw) {
+        if (adding) {
+            if (order.size() >= HOME_METRIC_LIMIT) { toast("最多选择 " + HOME_METRIC_LIMIT + " 项指标"); return; }
+            int position = Arrays.asList(HOME_METRIC_IDS).indexOf(id);
+            ArrayList<String> next = new ArrayList<>();
+            if (position > 0) for (int i = 0; i < position; i++) if (order.contains(HOME_METRIC_IDS[i])) next.add(HOME_METRIC_IDS[i]);
+            next.add(id);
+            for (int i = position + 1; i < HOME_METRIC_IDS.length; i++) if (order.contains(HOME_METRIC_IDS[i])) next.add(HOME_METRIC_IDS[i]);
+            order.clear(); order.addAll(next);
+        } else order.remove(id);
+        redraw.run();
     }
 
     private List<String> selectedHomeMetrics() {
