@@ -67,6 +67,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.math.RoundingMode;
 import java.text.DecimalFormat;
 import java.time.DateTimeException;
 import java.time.LocalDate;
@@ -117,6 +118,8 @@ public class MainActivity extends AppCompatActivity {
     private final ExecutorService dataExecutor = Executors.newSingleThreadExecutor();
     private final Map<String, MarketDataClient.Quote> quotes = new HashMap<>();
     private boolean quoteRefreshInFlight;
+    /** Last quote-refresh warning, kept so the holdings page can show why prices are missing. */
+    private String quoteWarning;
     private long lastQuoteRefresh;
     private String lastQuoteSignature = "";
     private LinearLayout shell, content;
@@ -129,7 +132,14 @@ public class MainActivity extends AppCompatActivity {
     private boolean darkMode;
     private int lastWidthDp = -1, lastHeightDp = -1;
     private Typeface appTypeface = Typeface.DEFAULT;
-    private final DecimalFormat moneyFormat = new DecimalFormat("#,##0.00");
+    // HALF_UP on purpose: DecimalFormat defaults to HALF_EVEN (banker's rounding), which rounds
+    // 0.005 down and surprises people reading their own money.
+    private final DecimalFormat moneyFormat = halfUpMoneyFormat();
+    private static DecimalFormat halfUpMoneyFormat() {
+        DecimalFormat format = new DecimalFormat("#,##0.00");
+        format.setRoundingMode(RoundingMode.HALF_UP);
+        return format;
+    }
 
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -212,7 +222,15 @@ public class MainActivity extends AppCompatActivity {
         MARKET_UP = getColor(R.color.app_market_up); MARKET_DOWN = getColor(R.color.app_market_down);
         DIVIDEND = getColor(R.color.app_dividend_emphasis);
     }
-    @Override protected void onDestroy() { dataExecutor.shutdownNow(); if (db != null) db.close(); super.onDestroy(); }
+    @Override protected void onDestroy() {
+        // Graceful first: shutdownNow() interrupts tasks that may be mid-query, and closing the
+        // database under them makes their Cursor invalid and throws on a thread nobody watches.
+        dataExecutor.shutdown();
+        try { if (!dataExecutor.awaitTermination(2, java.util.concurrent.TimeUnit.SECONDS)) dataExecutor.shutdownNow(); }
+        catch (InterruptedException interrupted) { dataExecutor.shutdownNow(); Thread.currentThread().interrupt(); }
+        if (db != null) db.close();
+        super.onDestroy();
+    }
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
@@ -235,6 +253,10 @@ public class MainActivity extends AppCompatActivity {
                         .setNegativeButton("取消", null)
                         .setPositiveButton("验证并恢复", (d, w) -> {
                             try { db.importJson(json); selectedAccount = 0; render(); toast("备份恢复完成"); }
+                            // OutOfMemoryError is an Error, not an Exception: without this arm a large
+                            // backup turns into a silent crash instead of a message. Recovery already
+                            // runs inside one transaction, so bailing out leaves the old data intact.
+                            catch (OutOfMemoryError tooLarge) { Log.w("Suizhang", "restore ran out of memory", tooLarge); toast("备份过大，已放弃恢复，原数据未更改"); }
                             catch (Exception e) { toast("备份无效，原数据未更改：" + safeMessage(e)); }
                         }).show();
             } catch (Exception e) { toast("无法读取备份，原数据未更改：" + safeMessage(e)); }
@@ -250,7 +272,17 @@ public class MainActivity extends AppCompatActivity {
     }
     private boolean isZipFile(byte[] bytes) { return bytes != null && bytes.length >= 2 && bytes[0] == 'P' && bytes[1] == 'K'; }
 
+    /**
+     * Renders the active page. Failures used to propagate out of tab switches and network
+     * callbacks and crash the app; a bad setting read or a bad backup row now degrades to a
+     * toast on a stale screen, which is recoverable, and is logged for follow-up.
+     */
     private void render() {
+        try { renderPage(); }
+        catch (Exception e) { Log.w("Suizhang", "render failed", e); toast("页面刷新失败：" + safeMessage(e)); }
+    }
+
+    private void renderPage() {
         loadColors();
         shell = new LinearLayout(this); shell.setOrientation(LinearLayout.VERTICAL); shell.setBackgroundColor(CREAM); shell.setFitsSystemWindows(false);
         ViewCompat.setOnApplyWindowInsetsListener(shell, (view, insets) -> {
@@ -738,6 +770,17 @@ private void showHome() {
         content.addView(actionButtonRow(actionButton("新增持仓", false, () -> showHoldingQuickActions()),
                 actionButton("更多操作", false, this::showHoldingsMoreActions)), margin(0, 0, 0, 8));
         if (hs.length() == 0) { emptyInfoCard("还没有持仓记录", "可在上方选择手动新增，或从券商截图识别；行情与分红源不可用时仍可本地记账。"); return; }
+        if (quoteWarning != null) {
+            LinearLayout warn = row(); warn.setGravity(Gravity.CENTER_VERTICAL);
+            warn.addView(text(quoteWarning, 11, MUTED, false), new LinearLayout.LayoutParams(0, -2, 1));
+            MaterialButton retry = actionButton("重试", false, () -> {
+                if (quoteRefreshInFlight) { toast("行情正在刷新，请稍候"); return; }
+                lastQuoteRefresh = 0; refreshQuotes(db.holdings(selectedAccount));
+            });
+            int retryWidth = (int) (getResources().getDisplayMetrics().widthPixels * .28f);
+            warn.addView(retry, new LinearLayout.LayoutParams(Math.max(dimen(R.dimen.ds_touch_target_min), Math.min(dp(120), retryWidth)), -2));
+            content.addView(warn, margin(0, 0, 0, 8));
+        }
         Map<String, Double> currencyMarketValues = marketValueByCurrency(hs);
         for (int i = 0; i < hs.length(); i++) {
             JSONObject h = hs.optJSONObject(i); CardColumn item = card(); item.setOrientation(LinearLayout.VERTICAL);
@@ -745,7 +788,7 @@ private void showHome() {
             LinearLayout top = row(); top.setGravity(Gravity.CENTER_VERTICAL); top.addView(text(h.optString("name"), 16, INK, true), new LinearLayout.LayoutParams(0, -2, 1));
             TextView tag = text(h.optString("market") + " · " + h.optString("currency"), 10, ACCENT, true); tag.setPadding(dp(8), dp(5), dp(8), dp(5)); tag.setBackground(roundPx(PRIMARY_CONTAINER, dimen(R.dimen.ds_market_badge_radius), 0, 0)); top.addView(tag); item.addView(top);
             String code = h.optString("code");
-            String quoteLine = quote == null ? "行情未同步 · 按持仓成本估值" : amount(quote.currency, quote.price) + "  " + marketMoveLabel(quote.changePercent) + (quote.stale ? " · 缓存" : "");
+            String quoteLine = quote == null ? quoteUnavailableReason(h) : amount(quote.currency, quote.price) + "  " + marketMoveLabel(quote.changePercent) + (quote.stale ? " · 缓存" : "");
             item.addView(text((code.isEmpty() ? "未填写代码" : code) + " · " + h.optString("account_name") + "   " + quoteLine + (quote == null ? "" : " · 腾讯截至 " + timeLabel(quote.updatedAt)), 11, quote == null ? MUTED : marketMoveColor(quote.changePercent), false), margin(0, 4, 0, 9));
             double q = h.optDouble("quantity"), unitCost = h.optDouble("cost"), gross = annualOf(h, false), invested = q * unitCost;
             String currency = h.optString("currency", "CNY");
@@ -791,7 +834,10 @@ private void showHome() {
         new MaterialAlertDialogBuilder(this).setTitle("持仓工具").setItems(new String[]{"搜索证券", "导入券商截图", "刷新行情"}, (d, which) -> {
             if (which == 0) beginSecuritySearch(null);
             else if (which == 1) chooseBrokerScreenshot();
-            else { lastQuoteRefresh = 0; refreshQuotes(db.holdings(selectedAccount)); }
+            else {
+                if (quoteRefreshInFlight) { toast("行情正在刷新，请稍候"); return; }
+                lastQuoteRefresh = 0; refreshQuotes(db.holdings(selectedAccount));
+            }
         }).show();
     }
     private void holdingMenu(JSONObject h) {
@@ -1092,36 +1138,46 @@ private void showHome() {
         content.addView(monthCard, margin(0, 0, 0, 6));
     }
 
+    /** Counts dividends whose pay date has arrived and are still expected, so future payouts are excluded. */
     private int countPendingReceived(JSONArray rows) {
         if (rows == null) return 0;
+        LocalDate asOf = LocalDate.now();
         int count = 0;
         for (int i = 0; i < rows.length(); i++) {
             JSONObject row = rows.optJSONObject(i);
-            if (row != null && !"received".equals(row.optString("status"))) count++;
+            if (row != null && DividendBatchRules.isEligible(row.optString("status"), row.optString("pay_date"), asOf)) count++;
         }
         return count;
     }
 
-    /** Confirms arrival for every unfinished dividend in the given year. Amounts are left untouched. */
+    /**
+     * Confirms arrival for every dividend in the given year whose pay date has arrived.
+     * Amounts are left untouched. Pay dates in the future stay 'expected' on purpose: a year
+     * view lists all twelve months, and marking an announced December payout as received in
+     * January would inflate 今年已收 and 累计收益 with money that has not been paid.
+     */
     private void confirmMarkReceivedBatch(JSONArray rows) {
         ArrayList<Long> ids = new ArrayList<>();
         ArrayList<String> names = new ArrayList<>();
+        LocalDate asOf = LocalDate.now();
         if (rows != null) for (int i = 0; i < rows.length(); i++) {
             JSONObject row = rows.optJSONObject(i);
-            if (row == null || "received".equals(row.optString("status"))) continue;
+            if (row == null) continue;
+            String payDate = row.optString("pay_date");
+            if (!DividendBatchRules.isEligible(row.optString("status"), payDate, asOf)) continue;
             ids.add(row.optLong("_id"));
             String label = row.optString("holding_name", row.optString("code", "持仓"));
-            names.add(label + " " + amount(row.optString("currency", "CNY"), row.optDouble("total")));
+            names.add(label + " " + amount(row.optString("currency", "CNY"), row.optDouble("total")) + " · 派息日 " + shortDate(payDate));
         }
-        if (ids.isEmpty()) { toast("没有待确认的记录"); return; }
+        if (ids.isEmpty()) { toast("没有已到派息日且待确认的记录"); return; }
         LinearLayout f = form();
-        f.addView(text("将把 " + ids.size() + " 笔分红标记为已到账：", 12, INK, false));
+        f.addView(text("将把 " + ids.size() + " 笔已到派息日的分红标记为已到账：", 12, INK, false));
         LinearLayout list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL);
         for (String name : names) list.addView(text(name, 11, MUTED, false), margin(0, 2, 0, 0));
         f.addView(list, margin(0, 6, 0, 0));
         f.addView(text("不填写实收金额，因此不会改动持仓成本；之后可在月历逐笔补录金额。", 11, MUTED, false), margin(0, 8, 0, 0));
         new MaterialAlertDialogBuilder(this).setTitle("确认批量到账")
-                .setMessage("请先核对券商流水，确认这些分红确实已入账。")
+                .setMessage("仅列出已到派息日的待收记录，未来派息不会包含在内。请先核对券商流水，确认这些分红确实已入账。")
                 .setView(wrapForm(f))
                 .setNegativeButton("取消", null)
                 .setPositiveButton("确认 " + ids.size() + " 笔", (d, w) -> {
@@ -1349,7 +1405,7 @@ private void showHome() {
     }
     private void showDripResults() {
         String cur = setting("drip_currency", "CNY"); double a = settingDouble("drip_initial", 0), r = settingDouble("drip_yield", .04), c = settingDouble("drip_contribution", 0);
-        double p = settingDouble("drip_reinvest", 1), t = settingDouble("drip_tax", .10); int years = (int) Math.max(1, Math.min(30, settingDouble("drip_years", 20)));
+        double p = clampRate(settingDouble("drip_reinvest", 1)), t = clampRate(settingDouble("drip_tax", .10)); int years = (int) Math.max(1, Math.min(30, settingDouble("drip_years", 20)));
         ArrayList<FinanceMath.DripYear> rows = new ArrayList<>(FinanceMath.project(a, r, c, p, years, t));
         double target = totalGoalForCurrency(cur); int coveredYear = -1; for (FinanceMath.DripYear row : rows) if (target > 0 && row.netDividend >= target) { coveredYear = row.year; break; }
         CardColumn result = card(); result.setOrientation(LinearLayout.VERTICAL); result.addView(text("逐年测算 · " + cur, 16, INK, true));
@@ -1365,7 +1421,8 @@ private void showHome() {
         content.addView(result, margin(0, 0, 0, 10));
     }
     private void showGoals() {
-        JSONArray goals = db.goals(); if (goals.length() == 0) { content.addView(text("还没有支出目标。", 12, MUTED, false), margin(2, 2, 0, 10)); return; }
+        JSONArray goals = db.goals();
+        if (goals.length() == 0) { emptyCard("还没有支出目标", "添加一笔固定生活开支后，这里会显示股息对它的覆盖比例。", "新增支出目标", () -> showGoalEditor(null)); return; }
         Map<String, Double> netIncome = estimatedIncomeByCurrency(true);
         for (int i = 0; i < goals.length(); i++) {
             JSONObject g = goals.optJSONObject(i); double annual = safeAnnualExpense(g.optString("period"), g.optDouble("amount")); String curr = g.optString("currency", "CNY");
@@ -1421,7 +1478,7 @@ private void showHome() {
         sectionHeader("各标的年分红贡献", "持仓", () -> { activeTab = "holdings"; render(); });
         ArrayList<JSONObject> list = new ArrayList<>(); JSONArray holdings = db.holdings(selectedAccount); for (int i = 0; i < holdings.length(); i++) list.add(holdings.optJSONObject(i));
         Collections.sort(list, (a, b) -> Double.compare(annualForSort(b, taxNet), annualForSort(a, taxNet)));
-        if (list.isEmpty()) content.addView(text("尚无持仓数据。", 12, MUTED, false));
+        if (list.isEmpty()) emptyCard("还没有持仓", "新增持仓后，这里按每只标的的预计年分红从高到低排序。", "新增持仓", this::showHoldingQuickActions);
         for (int i = 0; i < list.size(); i++) {
             JSONObject h = list.get(i); double annual = annualOf(h, taxNet), totalCost = h.optDouble("quantity") * h.optDouble("cost");
             String annualLabel = !Double.isFinite(annual) ? "税务未确认" : amount(h.optString("currency"), annual) + "/年";
@@ -1433,7 +1490,9 @@ private void showHome() {
     private void showAccountCard() {
         CardColumn card = card(); card.setOrientation(LinearLayout.VERTICAL); card.addView(text("账户管理", 16, INK, true)); card.addView(text("当前筛选范围：" + accountLabel() + " · 在总览切换；仅用于本地筛选，不连接券商。", 11, MUTED, false), margin(0, 4, 0, 8));
         LinearLayout r = row(); r.addView(actionButton("新增账户", false, this::showAddAccount), new LinearLayout.LayoutParams(-1, dp(48))); card.addView(r);
-        JSONArray acc = db.accounts(); for (int i = 0; i < acc.length(); i++) { JSONObject a = acc.optJSONObject(i); card.addView(text("• " + a.optString("name") + (selectedAccount == a.optLong("_id") ? " · 当前" : ""), 11, MUTED, false), margin(1, 6, 0, 0)); }
+        JSONArray acc = db.accounts();
+        if (acc.length() == 0) card.addView(text("还没有账户。新建一个可以把不同券商或不同用途的持仓分开记账。", 11, MUTED, false), margin(1, 6, 0, 0));
+        for (int i = 0; i < acc.length(); i++) { JSONObject a = acc.optJSONObject(i); card.addView(text("• " + a.optString("name") + (selectedAccount == a.optLong("_id") ? " · 当前" : ""), 11, MUTED, false), margin(1, 6, 0, 0)); }
         content.addView(card, margin(0, 0, 0, 10));
     }
     private void showTaxSettingsCard() {
@@ -1508,7 +1567,7 @@ private void showHome() {
     }
     private void showTransactions() {
         sectionHeader("最近交易流水", "新增交易", () -> showTransactionDialog(0)); JSONArray transactions = db.transactions(selectedAccount, 25);
-        if (transactions.length() == 0) content.addView(text("还没有交易记录。", 11, MUTED, false), margin(1, 0, 0, 6));
+        if (transactions.length() == 0) content.addView(text("还没有交易记录。买入/卖出会重算加权成本，并用于 A 股持有期税率估算。", 11, MUTED, false), margin(1, 0, 0, 6));
         for (int i = 0; i < transactions.length(); i++) { JSONObject t = transactions.optJSONObject(i); CardColumn item = card(); item.setOrientation(LinearLayout.HORIZONTAL); item.setGravity(Gravity.CENTER_VERTICAL);
             item.addView(text(t.optString("side"), 12, INK, true), new LinearLayout.LayoutParams(dp(42), -2));
             item.addView(text(t.optString("holding_name") + " · " + shortDate(t.optString("trade_date")) + " · " + compact(t.optDouble("quantity")) + " × " + amount("", t.optDouble("price")), 11, INK, false), new LinearLayout.LayoutParams(0, -2, 1)); content.addView(item, margin(0, 3, 0, 4));
@@ -1724,10 +1783,13 @@ private void showHome() {
             String n = name.getText().toString().trim(); double q = parseNumber(quantity), costValue = parseNumber(cost), div = parseNumber(annualDiv), rate = parseNumber(taxRate) / 100d;
             if (n.isEmpty()) { name.setError("请填写名称"); return; }
             String selectedCostMethod = costMethodValue(selectedItem(costMethod));
-            if (!Double.isFinite(q) || !Double.isFinite(costValue) || !Double.isFinite(div) || q <= 0 ||
-                    (FinanceMath.COST_WEIGHTED_AVERAGE.equals(selectedCostMethod) && costValue < 0) || div < 0 || rate < 0 || rate > 1) {
-                quantity.setError("数量需大于 0；加权平均成本不能为负，其他成本可为负；派息不能为负；税率需在 0–100% 之间"); return;
-            }
+            // Report the offending field instead of piling every rule onto 数量: a wrong tax rate
+            // or a negative dividend used to highlight the quantity box and nothing else.
+            if (!hasNumber(quantity) || q <= 0) { quantity.setError("数量需大于 0"); return; }
+            if (!hasNumber(cost)) { cost.setError("请填写有效成本"); return; }
+            if (FinanceMath.COST_WEIGHTED_AVERAGE.equals(selectedCostMethod) && costValue < 0) { cost.setError("加权平均成本不能为负"); return; }
+            if (!hasNumber(annualDiv) || div < 0) { annualDiv.setError("每份年分红不能为负"); return; }
+            if (!hasNumber(taxRate) || rate < 0 || rate > 1) { taxRate.setError("税率需在 0–100% 之间"); return; }
             LocalDate opened = parseDate(openedOn.getText().toString()); if (opened == null) { openedOn.setError("请选择有效日期"); return; }
             JSONObject a = selectedJson(account); String savedCode = code.getText().toString().trim(), savedMarket = selectedItem(market);
             String selectedTaxMode = "自定义税率".equals(selectedItem(taxMode)) ? "manual" : "auto";
@@ -2229,7 +2291,11 @@ private void showHome() {
         LinearLayout f = form(); f.addView(field("持仓", holding)); f.addView(field("方向", side)); f.addView(field("日期", date)); f.addView(field("数量", quantity)); f.addView(field("成交单价", price)); f.addView(field("手续费", fees)); f.addView(field("备注", note)); f.addView(text("买入手续费并入加权成本；卖出减少股数并保持原每份成本，不能超卖。", 10, MUTED, false));
         AlertDialog d = new MaterialAlertDialogBuilder(this).setTitle("新增交易记录").setView(wrapForm(f)).setNegativeButton("取消", null).setPositiveButton("保存", null).create();
         d.setOnShowListener(v -> d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(b -> { JSONObject h = selectedJson(holding); double q = parseNumber(quantity), p = parseNumber(price), fee = parseNumber(fees); LocalDate dt = parseDate(date.getText().toString());
-            if (h == null || q <= 0 || p < 0 || fee < 0) { quantity.setError("数量需大于 0，价格/手续费不能为负"); return; } if (dt == null) { date.setError("日期无效"); return; }
+            if (h == null) { toast("请先选择持仓"); return; }
+            if (!hasNumber(quantity) || q <= 0) { quantity.setError("数量需大于 0"); return; }
+            if (!hasNumber(price) || p < 0) { price.setError("成交单价不能为负"); return; }
+            if (!hasNumber(fees) || fee < 0) { fees.setError("手续费不能为负"); return; }
+            if (dt == null) { date.setError("日期无效"); return; }
             if (!db.addTransaction(h.optLong("_id"), h.optLong("account_id"), selectedItem(side), dt.toString(), q, p, fee, note.getText().toString())) { quantity.setError("卖出数量不能超过当前持仓，未保存"); return; }
             hideKeyboard(d); d.dismiss(); render(); toast("交易已保存"); })); showFormDialog(d);
     }
@@ -2484,10 +2550,23 @@ private void showHome() {
             runOnUiSafely(() -> {
                 quoteRefreshInFlight = false;
                 for (MarketDataClient.Quote q : snap.rows) quotes.put(q.code.toUpperCase(Locale.ROOT), q);
+                // Keep the warning only when nothing came back, otherwise it is stale noise.
+                quoteWarning = snap.rows.isEmpty() ? snap.warning : null;
                 if ("holdings".equals(activeTab)) render();
                 else if (snap.rows.isEmpty() && snap.warning != null) toast(snap.warning);
             });
         });
+    }
+    /**
+     * Why a holding has no quote. Six different situations used to collapse into one line —
+     * "行情未同步" — which made a missing code look identical to a network outage and made
+     * unsupported markets look permanently broken.
+     */
+    private String quoteUnavailableReason(JSONObject h) {
+        if (h.optString("code").trim().isEmpty()) return "未填写代码 · 按持仓成本估值";
+        String market = h.optString("market");
+        if (!"A股".equals(market) && !"港股".equals(market)) return "该市场暂不支持行情查询 · 按持仓成本估值";
+        return "行情未同步 · 按持仓成本估值";
     }
     private MarketDataClient.Quote quoteFor(JSONObject h) {
         String code = h.optString("code"); if (code.isEmpty()) return null;
@@ -2511,7 +2590,12 @@ private void showHome() {
                 double qty = lot.optDouble("quantity", Double.NaN); LocalDate opened = parseDate(lot.optString("opened_on")); if (opened == null) return 0d;
                 taxLots.add(new FinanceMath.Lot(qty, opened));
             }
-            return clampRate(FinanceMath.aShareRecordDateTaxRate(taxLots, date, settingDouble("tax_a_short", .2), settingDouble("tax_a_mid", .1), settingDouble("tax_a_long", 0)));
+            // Clamp before the call, not after: aShareRecordDateTaxRate rejects out-of-range rates
+            // outright, and a hand-edited Excel settings sheet can put e.g. 5 into tax_a_short.
+            return clampRate(FinanceMath.aShareRecordDateTaxRate(taxLots, date,
+                    clampRate(settingDouble("tax_a_short", .2)),
+                    clampRate(settingDouble("tax_a_mid", .1)),
+                    clampRate(settingDouble("tax_a_long", 0))));
         }
         if ("港股".equals(market)) return "港股通".equals(setting("tax_hk_channel", "未确认")) ? .20d : 0d;
         if ("美股".equals(market)) {
@@ -2581,13 +2665,26 @@ private void showHome() {
     private Map<String, Double> scaleMap(Map<String, Double> source, double scale) { Map<String, Double> out = new TreeMap<>(); for (Map.Entry<String, Double> e : source.entrySet()) out.put(e.getKey(), e.getValue() * scale); return out; }
     private String formatAmounts(Map<String, Double> values) { if (values.isEmpty()) return "—"; ArrayList<String> parts = new ArrayList<>(); for (Map.Entry<String, Double> e : values.entrySet()) parts.add(amount(e.getKey(), e.getValue())); return android.text.TextUtils.join("  /  ", parts); }
     private String formatPercentMap(Map<String, Double> values) { if (values.isEmpty()) return "—"; ArrayList<String> parts = new ArrayList<>(); for (Map.Entry<String, Double> e : values.entrySet()) parts.add(e.getKey() + " " + percent(e.getValue())); return android.text.TextUtils.join("  /  ", parts); }
-    private String percent(double rate) { return moneyFormat.format(rate * 100d) + "%"; }
-    private String amount(String currency, double value) { String prefix; switch (currency == null ? "" : currency) { case "CNY": prefix = "¥"; break; case "HKD": prefix = "HK$"; break; case "USD": prefix = "$"; break; default: prefix = currency == null || currency.isEmpty() ? "" : currency + " "; } return prefix + moneyFormat.format(value); }
-    private String compact(double value) { if (Math.abs(value - Math.rint(value)) < 1e-7) return String.format(Locale.US, "%.0f", value); return new DecimalFormat("#,##0.####").format(value); }
+    /** Renders an unknown value as a dash rather than letting DecimalFormat print "NaN" or "∞". */
+    private String percent(double rate) { return Double.isFinite(rate) ? moneyFormat.format(rate * 100d) + "%" : "—"; }
+    private String amount(String currency, double value) { String prefix; switch (currency == null ? "" : currency) { case "CNY": prefix = "¥"; break; case "HKD": prefix = "HK$"; break; case "USD": prefix = "$"; break; default: prefix = currency == null || currency.isEmpty() ? "" : currency + " "; } return prefix + (Double.isFinite(value) ? moneyFormat.format(value) : "—"); }
+    private String compact(double value) { if (!Double.isFinite(value)) return "—"; if (Math.abs(value - Math.rint(value)) < 1e-7) return String.format(Locale.US, "%.0f", value); return new DecimalFormat("#,##0.####").format(value); }
     private String shortDate(String value) { LocalDate d = parseDate(value); return d == null ? value : d.format(DateTimeFormatter.ofPattern("M月d日")); }
     private LocalDate parseDate(String value) { try { return LocalDate.parse(value == null ? "" : value.trim(), ISO); } catch (Exception ignored) { return null; } }
     private String blankToNull(String value) { String v = value == null ? "" : value.trim(); return v.isEmpty() ? null : v; }
     private double parseNumber(EditText e) { try { return Double.parseDouble(e.getText().toString().trim()); } catch (Exception ignored) { return 0; } }
+
+    /**
+     * True when the field holds a parseable finite number.
+     *
+     * <p>parseNumber() alone turns half-typed input such as "-" or "1." into 0, which then gets
+     * saved as a real 0-price trade. Editors check this first so an unparseable field is rejected
+     * at the field that holds it rather than quietly written as zero.
+     */
+    private boolean hasNumber(EditText e) {
+        try { return Double.isFinite(Double.parseDouble(e.getText().toString().trim())); }
+        catch (Exception ignored) { return false; }
+    }
     private String accountLabel() { if (selectedAccount == 0) return "全部账户"; JSONArray a = db.accounts(); for (int i = 0; i < a.length(); i++) if (a.optJSONObject(i).optLong("_id") == selectedAccount) return a.optJSONObject(i).optString("name"); selectedAccount = 0; return "全部账户"; }
     private String safeMessage(Exception e) { String m = e.getMessage(); return m == null || m.trim().isEmpty() ? "请检查文件" : m; }
     private void toast(String msg) { Toast.makeText(this, msg, Toast.LENGTH_SHORT).show(); }
@@ -2601,10 +2698,7 @@ private void showHome() {
         });
     }
 
-    /** Keeps render() failures from propagating out of tab switches and callbacks. */
-    private void renderSafely() {
-        try { render(); }
-        catch (Exception e) { Log.w("Suizhang", "render failed", e); toast("页面刷新失败：" + safeMessage(e)); }
-    }
+    /** Alias kept so call sites can state the intent: render without letting a throw escape. */
+    private void renderSafely() { render(); }
     private void hideKeyboard(AlertDialog d) { try { InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE); if (imm != null && d != null && d.getCurrentFocus() != null) imm.hideSoftInputFromWindow(d.getCurrentFocus().getWindowToken(), 0); } catch (Exception ignored) { } }
 }

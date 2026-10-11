@@ -24,7 +24,6 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -39,7 +38,6 @@ public final class DividendReminderWorker extends Worker {
 
     static final String CHANNEL_ID = "dividend_milestones";
     private static final String WORK_NAME = "suizhang_dividend_reminder";
-    private static final int LOOKAHEAD_DAYS = 7;
 
     public DividendReminderWorker(@NonNull Context context, @NonNull WorkerParameters params) {
         super(context, params);
@@ -96,24 +94,11 @@ public final class DividendReminderWorker extends Worker {
         }
     }
 
-    /** Returns a human label when a milestone lands inside the lookahead window. */
+    /** Delegates to the pure rules so the window can be unit tested off-device. */
     private static String milestoneOf(JSONObject row, LocalDate today) {
-        String pay = row.optString("pay_date", "");
-        if (pay.length() >= 10 && withinWindow(pay, today)) return "预计 " + pay + " 派息";
-        String ex = row.optString("ex_date", "");
-        if (ex.length() >= 10 && withinWindow(ex, today)) return "预计 " + ex + " 除息";
-        String record = row.optString("record_date", "");
-        if (record.length() >= 10 && withinWindow(record, today)) return "预计 " + record + " 登记日";
-        return null;
-    }
-
-    private static boolean withinWindow(String isoDate, LocalDate today) {
-        try {
-            long days = ChronoUnit.DAYS.between(today, LocalDate.parse(isoDate));
-            return days >= 0 && days <= LOOKAHEAD_DAYS;
-        } catch (Exception e) {
-            return false;
-        }
+        if (row == null) return null;
+        return DividendMilestones.milestoneOf(row.optString("record_date", ""), row.optString("ex_date", ""),
+                row.optString("pay_date", ""), today);
     }
 
     private static void notify(Context context, String message) {

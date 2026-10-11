@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 final class LedgerDatabase extends SQLiteOpenHelper {
     private static final String DB_NAME = "suizhang-ledger.db";
@@ -36,7 +37,10 @@ final class LedgerDatabase extends SQLiteOpenHelper {
      * lots for one holding three separate times and each pass re-read the same holdings row, so a
      * per-render cache removes two thirds of those reads. Cleared on every write; see clearOpeningCache.
      */
-    private final Map<Long, Opening> openingCache = new HashMap<>();
+    // Concurrent, not HashMap: tax estimation fills this from the single-thread dataExecutor while
+    // the UI thread clears it on every write. Concurrent put() on a plain HashMap can corrupt the
+    // table or spin forever, which shows up as a random freeze rather than a stack trace.
+    private final Map<Long, Opening> openingCache = new ConcurrentHashMap<>();
     private static final class Opening { final double quantity; final String openedOn;
         Opening(double q, String o) { quantity = q; openedOn = o; } }
 
@@ -258,18 +262,30 @@ final class LedgerDatabase extends SQLiteOpenHelper {
         return getWritableDatabase().update("holdings", cv, "_id=? AND code=? AND market=?",
                 new String[]{String.valueOf(id), code.trim(), market}) > 0;
     }
+    /**
+     * Marks one dividend received and, when an amount is given, folds it into holding cost.
+     *
+     * <p>Both writes share a transaction. They used to be two independent statements, so a
+     * failure in between could leave the dividend marked received while the cost stayed
+     * unadjusted — a silent, permanent mismatch between received money and cost basis.
+     */
     void markDividendReceived(long id, Double actualReceivedAmount) {
-        SQLiteDatabase db = getWritableDatabase(); long holdingId = 0; boolean hadAmount = false; double oldAmount = 0d;
-        try (Cursor c = db.rawQuery("SELECT holding_id,received_amount FROM dividends WHERE _id=?", new String[]{String.valueOf(id)})) {
-            if (!c.moveToFirst()) return; holdingId = c.getLong(0); hadAmount = !c.isNull(1); if (hadAmount) oldAmount = c.getDouble(1);
-        }
-        ContentValues cv = new ContentValues(); cv.put("status", "received");
-        if (actualReceivedAmount != null) {
-            if (!Double.isFinite(actualReceivedAmount) || actualReceivedAmount < 0d) throw new IllegalArgumentException("实际到账金额不合法");
-            cv.put("received_amount", actualReceivedAmount);
-        }
-        db.update("dividends", cv, "_id=?", new String[]{String.valueOf(id)});
-        if (actualReceivedAmount != null) adjustCostForDividend(db, holdingId, actualReceivedAmount - (hadAmount ? oldAmount : 0d));
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            long holdingId = 0; boolean hadAmount = false; double oldAmount = 0d;
+            try (Cursor c = db.rawQuery("SELECT holding_id,received_amount FROM dividends WHERE _id=?", new String[]{String.valueOf(id)})) {
+                if (!c.moveToFirst()) return; holdingId = c.getLong(0); hadAmount = !c.isNull(1); if (hadAmount) oldAmount = c.getDouble(1);
+            }
+            ContentValues cv = new ContentValues(); cv.put("status", "received");
+            if (actualReceivedAmount != null) {
+                if (!Double.isFinite(actualReceivedAmount) || actualReceivedAmount < 0d) throw new IllegalArgumentException("实际到账金额不合法");
+                cv.put("received_amount", actualReceivedAmount);
+            }
+            db.update("dividends", cv, "_id=?", new String[]{String.valueOf(id)});
+            if (actualReceivedAmount != null) adjustCostForDividend(db, holdingId, actualReceivedAmount - (hadAmount ? oldAmount : 0d));
+            db.setTransactionSuccessful();
+        } finally { db.endTransaction(); }
     }
 /**
      * Marks every listed dividend as received in one transaction, leaving received_amount null.
@@ -313,9 +329,14 @@ final class LedgerDatabase extends SQLiteOpenHelper {
         cv.put("status", status); cv.put("note", note); cv.put("created_at", Instant.now().toString());
         cv.put("tax_rate", taxRate); cv.put("tax_known", taxKnown ? 1 : 0);
         if (actualReceivedAmount != null) cv.put("received_amount", actualReceivedAmount);
-        SQLiteDatabase db = getWritableDatabase(); long id = db.insertOrThrow("dividends", null, cv);
-        if ("received".equals(status) && actualReceivedAmount != null) adjustCostForDividend(db, holdingId, actualReceivedAmount);
-        return id;
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            long id = db.insertOrThrow("dividends", null, cv);
+            if ("received".equals(status) && actualReceivedAmount != null) adjustCostForDividend(db, holdingId, actualReceivedAmount);
+            db.setTransactionSuccessful();
+            return id;
+        } finally { db.endTransaction(); }
     }
 
     private void adjustCostForDividend(SQLiteDatabase db, long holdingId, double actualNetAmount) {
@@ -502,7 +523,12 @@ final class LedgerDatabase extends SQLiteOpenHelper {
     void deleteGoal(long id) { getWritableDatabase().delete("expense_goals", "_id=?", new String[]{String.valueOf(id)}); }
     void saveSetting(String key, String value) { ContentValues cv = new ContentValues(); cv.put("key", key); cv.put("value", value); getWritableDatabase().insertWithOnConflict("app_settings", null, cv, SQLiteDatabase.CONFLICT_REPLACE); }
     String setting(String key, String fallback) {
-        try (Cursor c = getReadableDatabase().rawQuery("SELECT value FROM app_settings WHERE key=?", new String[]{key})) { return c.moveToFirst() ? c.getString(0) : fallback; }
+        try (Cursor c = getReadableDatabase().rawQuery("SELECT value FROM app_settings WHERE key=?", new String[]{key})) {
+            if (!c.moveToFirst()) return fallback;
+            String value = c.getString(0);
+            // A stored NULL value would otherwise flow into callers that immediately split() it.
+            return value == null ? fallback : value;
+        }
     }
 
     String exportJson() throws JSONException {
@@ -635,8 +661,7 @@ final class LedgerDatabase extends SQLiteOpenHelper {
                 if (!row.has("annual_dividend_per_unit")) cv.put("annual_dividend_per_unit", 0d);
                 if (!row.has("tax_rate")) cv.put("tax_rate", defaultTax(row.optString("market")));
             }
-            if ("asset_index".equals(table)) db.insertOrThrow(table, null, cv);
-            else db.insertOrThrow(table, null, cv);
+            db.insertOrThrow(table, null, cv);
         }
     }
     private double defaultTax(String market) {

@@ -1,8 +1,10 @@
 # 穗账 Android
 
-**当前源码：1.4.9-debug（versionCode 23）**。本版合入两条并行开发线：日历内与总览页各保留一套「已到账批量确认」入口（共用同一个数据库事务，仍只更新到账状态、不填写实收金额、不改动持仓成本）；同时接入 CI 流水线、JUnit 测试源集、release 版 R8 压缩与资源裁剪，并开启 SQLite WAL。界面延续暖麦金/炭灰与可选总览指标。原有 Excel `.xlsx` 完整账本工作簿和旧版 JSON 导入兼容保持不变。导入有明确的全量替换确认和事务校验，工作簿不会自动上传。包名 `cn.suizhang.ledger.debug`、最低 Android 10/API 29。**公开仓库只同步源码和文档，不包含 APK 或用户私有账本数据。**公式与税务边界见 [`FORMULA_ALIGNMENT_1.4.3.md`](FORMULA_ALIGNMENT_1.4.3.md)，升级说明见 [`UPGRADE_1.4.9.md`](UPGRADE_1.4.9.md)，设计准则见 [`DESIGN.md`](DESIGN.md)，已知问题见 [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md)。
+**当前源码：1.4.10-debug（versionCode 24）**。本版为一次全项目复盘后的查漏补缺：修正年度总览「批量确认到账」把未来派息一并标成已到账的缺陷，补齐分红写入的事务与缓存的线程安全，并修掉一批会让应用崩溃或写入脏数据的边界。交互上，行情缺失按原因分流、表单逐字段报错、空态给出下一步动作。界面延续暖麦金/炭灰与可选总览指标。原有 Excel `.xlsx` 完整账本工作簿和旧版 JSON 导入兼容保持不变。导入有明确的全量替换确认和事务校验，工作簿不会自动上传。包名 `cn.suizhang.ledger.debug`、最低 Android 10/API 29。**公开仓库只同步源码和文档，不包含 APK 或用户私有账本数据。**公式与税务边界见 [`FORMULA_ALIGNMENT_1.4.3.md`](FORMULA_ALIGNMENT_1.4.3.md)，升级说明见 [`UPGRADE_1.4.10.md`](UPGRADE_1.4.10.md)，设计准则见 [`DESIGN.md`](DESIGN.md)，已知问题见 [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md)。
 
 ## 主要功能
+
+- **1.4.10 复盘查漏与防御性加固**：年度总览的批量确认改为与月历同一套「派息日已到」判据，未来派息不再被误标为已到账。A 股三档税率与复利参数先钳制再传入，被改过的 Excel 设置表不再能触发启动崩溃；分红到账与成本摊薄合并进同一事务；期初持仓缓存改为并发容器；恢复备份单独捕获内存溢出；`render()` 自身兜底。交互侧：行情缺失区分「未填代码 / 该市场暂不支持 / 未同步」，刷新失败在持仓页可见并可重试，持仓与交易表单逐字段报错，空态补上主行动按钮。新增 `scripts/test-defensive-guards.py`（21 条）、`DividendMilestonesJUnitTest`（12 例），CI 补跑此前从未执行的 4 个 shell 套件。数据库 schema 仍为 4。详见 [`UPGRADE_1.4.10.md`](UPGRADE_1.4.10.md)。
 
 - **1.4.9 双入口批量确认与工程化加固**：总览页与月历页各有一个「批量确认到账」入口，共用 `markReceivedBatch` 单一事务；只更新 `status='expected'` 的行，重复调用与重复 id 均幂等。新增 GitHub Actions 流水线、JUnit 测试源集、release 开启 R8 代码压缩与资源裁剪，SQLite 开启 WAL。数据库 schema 仍为 4，权限仍只有 INTERNET 与 POST_NOTIFICATIONS。
 
@@ -80,9 +82,10 @@ python3 scripts/test-dialog-regressions.py
 python3 scripts/test-design-tokens.py
 python3 scripts/test-calendar-polish.py
 python3 scripts/test-calendar-redesign.py
+python3 scripts/test-defensive-guards.py
 ```
 
-说明：`testDebugUnitTest` Gradle 任务会执行，但当前 app 没有 JUnit 测试源，因此 Gradle 输出为 `NO-SOURCE`；本轮实际断言来自下面列出的项目自带回归脚本。
+说明：`testDebugUnitTest` 会执行 `app/src/test` 下的 JUnit 源（1.4.10 为 6 个类 / 39 个用例，全部通过）；上面列出的项目自带回归脚本覆盖 JUnit 到不了的部分——解析、隐私、界面不变量与源码级守卫。另有 4 个 `scripts/test-*.sh` 编译并运行 `scripts/` 下的纯逻辑 Java 套件，需要在 PATH 上有 `javac`。
 
 1.4.8 新增到期分红批量确认的日期候选规则、单事务状态更新、实收金额与持仓成本保护回归；其余回归覆盖 Excel 工作表/字段映射、文件大小限制、拒绝公式、旧 JSON 兼容、全量恢复保护，以及财务/税务、日历和数据源检查。APK 使用 JDK 21、Android SDK Platform 36 与 Gradle 8.13 构建；当前无连接设备或模拟器，未进行运行时点按和屏幕截图验收。
 

@@ -81,6 +81,22 @@ jobs:
           done
           exit $failed
 
+      - name: Run shell-driven Java checks
+        # Only scripts/test-*.py used to run here, which left six Java suites in scripts/ executing
+        # nowhere in CI. These compile and run the pure-logic classes off-device, including the
+        # calendar-query fixture that test-calendar-query.py needs to do real SQLite work.
+        run: |
+          failed=0
+          for f in scripts/test-*.sh; do
+            echo "::group::$f"
+            if ! bash "$f"; then
+              echo "::error::$f failed"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $failed
+
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4

@@ -35,6 +35,31 @@ public final class DividendBatchRulesTest {
                 DividendBatchRules.isEligible("unknown", "2026-10-01", october, asOf), false);
         check("允许清理有效 ISO 日期两侧空格",
                 DividendBatchRules.isEligible("expected", " 2026-10-01 ", october, asOf), true);
+
+        // Year overview batch: no month filter, but the pay-date gate still applies. Without it
+        // the year view would mark a December announcement as received in October.
+        check("年度批次接受本月已到派息日的待收记录",
+                DividendBatchRules.isEligible("expected", "2026-10-01", asOf), true);
+        check("年度批次接受同年更早月份已到派息日的记录",
+                DividendBatchRules.isEligible("expected", "2026-01-05", asOf), true);
+        check("年度批次拒绝同年更晚月份的未来派息",
+                DividendBatchRules.isEligible("expected", "2026-12-20", asOf), false);
+        check("年度批次拒绝明年的派息",
+                DividendBatchRules.isEligible("expected", "2027-03-01", asOf), false);
+        check("年度批次拒绝刚好是明天的派息",
+                DividendBatchRules.isEligible("expected", "2026-10-11", asOf), false);
+        check("年度批次接受今天到期的派息",
+                DividendBatchRules.isEligible("expected", "2026-10-10", asOf), true);
+        check("年度批次拒绝已到账记录",
+                DividendBatchRules.isEligible("received", "2026-10-01", asOf), false);
+        check("年度批次拒绝无效日期",
+                DividendBatchRules.isEligible("expected", "2026-02-30", asOf), false);
+        check("年度批次拒绝空派息日",
+                DividendBatchRules.isEligible("expected", "", asOf), false);
+        check("年度批次拒绝空派息日对象",
+                DividendBatchRules.isEligible("expected", null, asOf), false);
+        check("年度批次拒绝空参照日",
+                DividendBatchRules.isEligible("expected", "2026-10-01", (LocalDate) null), false);
         System.out.println("通过：" + assertions + " 项批量到账候选规则断言");
     }
 }

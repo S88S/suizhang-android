@@ -41,10 +41,9 @@ java -cp "$OUT/classes" cn.suizhang.ledger.CalendarQueryTest
 java -cp "$OUT/classes" cn.suizhang.ledger.CalendarYearSummaryTest
 java -cp "$OUT/classes" cn.suizhang.ledger.CalendarQueryTest --emit > "$OUT/calendar-query-fixtures.tsv"
 python3 "$ROOT/scripts/test-calendar-query.py" "$OUT/calendar-query-fixtures.tsv"
-JAVA_HOME="${JAVA_HOME:-$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")}"
-if [ -x "$ROOT/gradlew" ]; then
-  grep -q "idx_dividends_source_key" "$ROOT/app/src/main/java/cn/suizhang/ledger/LedgerDatabase.java"
-  grep -q "source_key=?" "$ROOT/app/src/main/java/cn/suizhang/ledger/LedgerDatabase.java"
-  grep -q "taxLotsAt" "$ROOT/app/src/main/java/cn/suizhang/ledger/LedgerDatabase.java"
-  echo "PASS  分红来源键唯一索引与 FIFO 本地回算结构存在"
-fi
+# Guarded on nothing: these greps used to sit behind `if [ -x gradlew ]`, which silently skipped
+# all three checks (and printed PASS) whenever gradlew was not executable. Fail loudly instead.
+grep -q "idx_dividends_source_key" "$ROOT/app/src/main/java/cn/suizhang/ledger/LedgerDatabase.java"
+grep -q "source_key=?" "$ROOT/app/src/main/java/cn/suizhang/ledger/LedgerDatabase.java"
+grep -q "taxLotsAt" "$ROOT/app/src/main/java/cn/suizhang/ledger/LedgerDatabase.java"
+echo "PASS  分红来源键唯一索引与 FIFO 本地回算结构存在"

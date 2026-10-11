@@ -30,7 +30,7 @@ editor = section("private void showHoldingEditor(", "private interface CatalogPi
 transactions = section("private void showTransactions()", "private void showBoundaries()")
 quick_actions = section("private void showHoldingQuickActions()", "private void addTaxToggle()")
 
-require("版本递增到 1.4.9 / code 23", "versionName '1.4.9'" in BUILD and re.search(r"versionCode\s+23\b", BUILD) is not None)
+require("版本递增到 1.4.10 / code 24", "versionName '1.4.10'" in BUILD and re.search(r"versionCode\s+24\b", BUILD) is not None)
 require("日历切换控件独占同一卡片，不再显示说明或账户范围行", "calendarControlPanel()" in calendar and "calendarHelpRow()" not in MAIN and "日历说明" not in MAIN and "accountScopeLabel()" not in controls)
 require("Material 单选组始终要求保留一个已选视图", "group.setSingleSelection(true)" in toggle and "group.setSelectionRequired(true)" in toggle and "addOnButtonCheckedListener" in toggle)
 require("月历和年度总览均保留并共享可用宽度", 'String[] labels = {"月历", "年度总览"}' in toggle and "new LinearLayout.LayoutParams(0, dimen(R.dimen.ds_touch_target_min), 1)" in toggle)

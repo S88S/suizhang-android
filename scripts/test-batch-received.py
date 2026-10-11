@@ -58,6 +58,25 @@ require("总览页确认前逐笔列出标的与金额，并提示不会改动�
         and "不会改动持仓成本" in activity)
 require("总览页与批量共用同一套成本说明文案",
         "不会触发分红摊薄成本" in activity and "不会用于分红摊薄成本" in activity)
+
+# --- overview must not sweep in payouts that have not happened yet ---
+# The year view lists all twelve months. Filtering on status alone would mark an announced
+# December payout as received in January and inflate 今年已收 with money never paid.
+rules = (root / "app/src/main/java/cn/suizhang/ledger/DividendBatchRules.java").read_text(encoding="utf-8")
+require("总览页候选先过派息日，不能只看状态",
+        'DividendBatchRules.isEligible(row.optString("status"), payDate, asOf)' in confirm_overview
+        and 'row.optString("pay_date")' in confirm_overview)
+require("总览页待确认笔数与确认列表使用同一判据",
+        'DividendBatchRules.isEligible(row.optString("status"), row.optString("pay_date"), asOf)'
+        in activity[activity.index("private int countPendingReceived("):activity.index("private void confirmMarkReceivedBatch(JSONArray rows)")])
+require("总览页候选不再用状态取反判断",
+        '!"received".equals(row.optString("status"))' not in confirm_overview)
+require("到期规则提供不带月份的重载，供年度批次复用",
+        "static boolean isEligible(String status, String payDate, LocalDate asOf)" in rules)
+require("到期规则同时要求状态为 expected 且派息日不晚于今天",
+        '"expected".equals(status)' in rules and "!payout.isAfter(asOf)" in rules)
+require("年度批次说明写明未来派息不在其中",
+        "未来派息不会包含在内" in confirm_overview)
 require("总览页确认后调用批量事务方法并刷新",
         "db.markReceivedBatch(ids)" in confirm_overview and "render();" in confirm_overview)
 
