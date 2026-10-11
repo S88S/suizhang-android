@@ -1,7 +1,6 @@
 package cn.suizhang.ledger;
 
 import java.nio.charset.Charset;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
@@ -70,11 +69,8 @@ public final class MarketDataTest {
         check("手工事件不会伪称公告", "手工记录".equals(DividendCalendarRules.statusLabel("manual", "expected")));
         check("无日期不会被误标到日历", "".equals(DividendCalendarRules.kindsForDate(null, "not-a-date", "", "2026-10-04")));
 
-        MarketDataClient.CacheChoice<List<String>> fallback = MarketDataClient.chooseCached(null, Arrays.asList("last-known"), 10L, 20L, 5L);
-        check("断网刷新失败回退缓存且标记旧数据", fallback.value != null && fallback.stale && "last-known".equals(fallback.value.get(0)));
-        MarketDataClient.CacheChoice<List<String>> fresh = MarketDataClient.chooseCached(Arrays.asList("new"), Arrays.asList("old"), 10L, 20L, 5L);
-        check("新网络数据优先于缓存", !fresh.stale && "new".equals(fresh.value.get(0)));
-        check("搜索失败时旧缓存仍标记为待核对", MarketDataClient.chooseCached(null, Arrays.asList("old"), 10L, 20L, 5L).stale);
+        // chooseCached used to be asserted here. It had no production caller, so these three
+        // checks were green over dead code; both the helper and its checks are gone.
         System.out.println("通过：" + passed + " 项公开数据解析/缓存断言");
     }
 }

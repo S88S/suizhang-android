@@ -35,6 +35,7 @@
 - `onDestroy` 由 `shutdownNow()` 改为先优雅停机再关库，避免后台任务拿着已关闭数据库的 Cursor 在无主线程看管的线程里抛异常。
 - `setting()` 对存储的 NULL 值回退到默认值，不再让 `saved.split(",")` 空指针。
 - 清掉 `insertRows` 里 `asset_index` 与其它表两个分支逐字相同的死分支。
+- 删掉 `MarketDataClient.CacheChoice` 与 `chooseCached`。二者在生产代码里零调用——`quotes()`、`search()`、`dividends()` 各自内联了"回退到上次缓存"的逻辑；`chooseCached` 的三个时间形参也从未使用。它们唯一的调用方是 `scripts/MarketDataTest.java` 的三条断言，属于"绿灯覆盖着没人跑的代码"，一并移除（该套件由 15 条降至 12 条）。
 - `render()` 自身兜底：渲染抛异常时记录日志并提示，不再带崩应用。此前专门写的 `renderSafely()` 定义了却从未被调用。
 
 ## 交互打磨

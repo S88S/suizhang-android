@@ -74,18 +74,9 @@ final class MarketDataClient {
             this.rows = rows; this.updatedAt = updatedAt; this.stale = stale; this.warning = warning; this.cached = cached;
         }
     }
-    static final class CacheChoice<T> {
-        final T value; final boolean stale;
-        CacheChoice(T value, boolean stale) { this.value = value; this.stale = stale; }
-    }
-
-    /** Pure helper: stale cache is kept when refresh fails; callers must label it as stale. */
-    static <T> CacheChoice<T> chooseCached(T networkValue, T cachedValue, long cacheTime,
-                                           long now, long ttl) {
-        if (networkValue != null) return new CacheChoice<>(networkValue, false);
-        if (cachedValue != null) return new CacheChoice<>(cachedValue, true);
-        return new CacheChoice<>(null, false);
-    }
+    // CacheChoice and chooseCached were removed: no production path called them. quotes(),
+    // search() and dividends() each inline their own "fall back to the last saved body" logic,
+    // so the helper only ever had a test — a green check over code nobody runs.
 
     Snapshot<Security> search(String query, String defaultMarket) {
         String q = query == null ? "" : query.trim();
