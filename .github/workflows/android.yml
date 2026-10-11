@@ -33,12 +33,23 @@ jobs:
         # `sdkmanager tools` call exits 1 on current runner images, which failed the job before
         # any build step ran. GitHub-hosted runners already ship the SDK and cmdline-tools, so
         # all that is needed is to accept the licenses and put the existing tools on PATH.
+        #
+        # Paths are resolved explicitly and then echoed. GITHUB_PATH entries only take effect
+        # for later steps, so calling `sdkmanager` by bare name inside this same run block would
+        # exit 127.
         run: |
-          echo "ANDROID_HOME=${ANDROID_HOME}" >> "$GITHUB_ENV"
-          echo "${ANDROID_HOME}/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
-          echo "${ANDROID_HOME}/platform-tools" >> "$GITHUB_PATH"
-          yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-          sdkmanager --list_installed
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          echo "Using SDK at ${SDK}"
+          if [ ! -x "${SDK}/cmdline-tools/latest/bin/sdkmanager" ]; then
+            echo "::error::sdkmanager not found under ${SDK}/cmdline-tools/latest/bin"
+            ls -la "${SDK}" || true
+            exit 1
+          fi
+          echo "ANDROID_HOME=${SDK}" >> "$GITHUB_ENV"
+          echo "${SDK}/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "${SDK}/platform-tools" >> "$GITHUB_PATH"
+          yes | "${SDK}/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "${SDK}/cmdline-tools/latest/bin/sdkmanager" --list_installed
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
