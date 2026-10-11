@@ -28,7 +28,17 @@ jobs:
           key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle', 'gradle/libs.versions.toml') }}
           restore-keys: gradle-${{ runner.os }}-
 
-      - uses: android-actions/setup-android@v3
+      - name: Set up Android SDK
+        # android-actions/setup-android is not used here. It is deprecated and its internal
+        # `sdkmanager tools` call exits 1 on current runner images, which failed the job before
+        # any build step ran. GitHub-hosted runners already ship the SDK and cmdline-tools, so
+        # all that is needed is to accept the licenses and put the existing tools on PATH.
+        run: |
+          echo "ANDROID_HOME=${ANDROID_HOME}" >> "$GITHUB_ENV"
+          echo "${ANDROID_HOME}/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "${ANDROID_HOME}/platform-tools" >> "$GITHUB_PATH"
+          yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          sdkmanager --list_installed
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
