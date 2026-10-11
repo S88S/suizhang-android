@@ -1,6 +1,6 @@
 # 穗账 Android
 
-**当前源码：1.4.9-debug（versionCode 23）**。本版合入两条并行开发线：日历内与总览页各保留一套「已到账批量确认」入口（共用同一个数据库事务，仍只更新到账状态、不填写实收金额、不改动持仓成本）；同时接入 CI 流水线、JUnit 测试源集、release 版 R8 压缩与资源裁剪，并开启 SQLite WAL。界面延续暖麦金/炭灰与可选总览指标。原有 Excel `.xlsx` 完整账本工作簿和旧版 JSON 导入兼容保持不变。导入有明确的全量替换确认和事务校验，工作簿不会自动上传。包名 `cn.suizhang.ledger.debug`、最低 Android 10/API 29。**公开仓库只同步源码和文档，不包含 APK 或用户私有账本数据。**公式与税务边界见 [`FORMULA_ALIGNMENT_1.4.3.md`](FORMULA_ALIGNMENT_1.4.3.md)，升级说明见 [`UPGRADE_1.4.8.md`](UPGRADE_1.4.8.md)，设计准则见 [`DESIGN.md`](DESIGN.md)，已知问题见 [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md)。
+**当前源码：1.4.9-debug（versionCode 23）**。本版合入两条并行开发线：日历内与总览页各保留一套「已到账批量确认」入口（共用同一个数据库事务，仍只更新到账状态、不填写实收金额、不改动持仓成本）；同时接入 CI 流水线、JUnit 测试源集、release 版 R8 压缩与资源裁剪，并开启 SQLite WAL。界面延续暖麦金/炭灰与可选总览指标。原有 Excel `.xlsx` 完整账本工作簿和旧版 JSON 导入兼容保持不变。导入有明确的全量替换确认和事务校验，工作簿不会自动上传。包名 `cn.suizhang.ledger.debug`、最低 Android 10/API 29。**公开仓库只同步源码和文档，不包含 APK 或用户私有账本数据。**公式与税务边界见 [`FORMULA_ALIGNMENT_1.4.3.md`](FORMULA_ALIGNMENT_1.4.3.md)，升级说明见 [`UPGRADE_1.4.9.md`](UPGRADE_1.4.9.md)，设计准则见 [`DESIGN.md`](DESIGN.md)，已知问题见 [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md)。
 
 ## 主要功能
 
