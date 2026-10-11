@@ -599,6 +599,7 @@ public class MainActivity extends AppCompatActivity {
         if (selectedDay != null && (selectedDay < 1 || selectedDay > cur.lengthOfMonth())) selectedDay = null;
         String ym = String.format(Locale.US, "%04d-%02d", cur.getYear(), cur.getMonthValue());
         JSONArray events = db.dividends(selectedAccount, ym); if (events == null) events = new JSONArray();
+        final JSONArray batchEvents = events;
         Map<Integer, int[]> marks = new TreeMap<>();
         for (int i = 0; i < events.length(); i++) {
             JSONObject e = events.optJSONObject(i); if (e == null) continue;
@@ -663,8 +664,13 @@ public class MainActivity extends AppCompatActivity {
         totalCard.addView(text("待到账 " + expectedCount + " 笔  ·  " + formatAmounts(monthExpected), 12, INK, true), margin(0, 6, 0, 0));
         totalCard.addView(text("已到账 " + receivedCount + " 笔  ·  " + formatAmounts(monthReceived), 12, DIVIDEND, true), margin(0, 4, 0, 0));
         totalCard.addView(text("待收使用税前记录金额；已到账优先用实收金额，旧记录未填实收时显示记录金额。各币种不合并换算。", 10, MUTED, false), margin(0, 5, 0, 0));
+        int pendingDueCount = pendingDueDividends(batchEvents, cur, LocalDate.now()).size();
+        if (pendingDueCount > 0) {
+            totalCard.addView(actionButton("批量确认已到账（" + pendingDueCount + " 笔）", false,
+                    () -> confirmMarkReceivedBatch(batchEvents, cur)), margin(0, 8, 0, 0));
+            totalCard.addView(text("仅包括本月已到派息日的待收记录；请先核对券商流水。批量操作只更新到账状态，不填实收金额，也不调整持仓成本。", 10, MUTED, false), margin(0, 5, 0, 0));
+        }
         content.addView(totalCard, margin(0, 0, 0, 7));
-
         long dividendSyncAt = settingLong("dividend_sync_at", 0L); boolean syncStale = "true".equals(setting("dividend_sync_stale", "false"));
         String freshness = dividendSyncAt > 0 ? "公开分红数据上次更新 " + timeLabel(dividendSyncAt) + (syncStale ? " · 含旧缓存" : "") : "公开分红数据尚未同步；新公告同步后显示在上方提醒。";
         content.addView(text(freshness + "  ·  日期和金额以正式公告为准。", 10, MUTED, false), margin(2, 0, 0, 6));
@@ -951,6 +957,42 @@ public class MainActivity extends AppCompatActivity {
             if (alreadyReceived && amount == null) { actual.setError("请输入实际到账金额"); return; }
             db.markDividendReceived(e.optLong("_id"), amount); d.dismiss(); render(); toast(alreadyReceived ? "实收金额已保存" : "已确认到账");
         })); showFormDialog(d);
+    }
+    private ArrayList<JSONObject> pendingDueDividends(JSONArray rows, YearMonth targetMonth, LocalDate asOf) {
+        ArrayList<JSONObject> pending = new ArrayList<>();
+        if (rows == null || targetMonth == null || asOf == null) return pending;
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject row = rows.optJSONObject(i);
+            if (row == null || row.optLong("_id") <= 0) continue;
+            if (DividendBatchRules.isEligible(row.optString("status"), row.optString("pay_date"), targetMonth, asOf)) pending.add(row);
+        }
+        return pending;
+    }
+    private void confirmMarkReceivedBatch(JSONArray rows, YearMonth targetMonth) {
+        ArrayList<JSONObject> pending = pendingDueDividends(rows, targetMonth, LocalDate.now());
+        if (pending.isEmpty()) { toast("没有到期且待确认的分红记录"); return; }
+        ArrayList<Long> ids = new ArrayList<>();
+        LinearLayout details = form();
+        details.addView(text("以下为账本记录金额，并非券商实收金额：", 12, INK, false));
+        for (JSONObject row : pending) {
+            ids.add(row.optLong("_id"));
+            String name = row.optString("holding_name", row.optString("holding_code", "持仓"));
+            details.addView(text(shortDate(row.optString("pay_date")) + " · " + name + " · 记录金额 " + amount(row.optString("currency", "CNY"), row.optDouble("total")), 11, MUTED, false), margin(0, 3, 0, 0));
+        }
+        details.addView(text("确认后只会把状态改为“已到账”，不会填写实际到账金额或改动持仓成本；如需按实收金额核算分红摊薄成本，可之后在月历逐笔补录。", 11, MUTED, false), margin(0, 8, 0, 0));
+        new MaterialAlertDialogBuilder(this).setTitle("确认批量到账")
+                .setMessage("仅列出所选月份已到派息日的待收记录。请先核对券商流水，确认这些款项确已入账。")
+                .setView(wrapForm(details)).setNegativeButton("取消", null)
+                .setPositiveButton("确认 " + pending.size() + " 笔", (dialog, which) -> {
+                    int changed;
+                    try { changed = db.markReceivedBatch(ids); }
+                    catch (RuntimeException failure) {
+                        toast("批量确认失败，状态未完成更新");
+                        return;
+                    }
+                    render();
+                    toast(changed > 0 ? "已确认 " + changed + " 笔到账" : "没有可更新的记录");
+                }).show();
     }
     private YearMonth calendarMonth() {
         try { return YearMonth.of(year, month); }

@@ -243,6 +243,22 @@ final class LedgerDatabase extends SQLiteOpenHelper {
         db.update("dividends", cv, "_id=?", new String[]{String.valueOf(id)});
         if (actualReceivedAmount != null) adjustCostForDividend(db, holdingId, actualReceivedAmount - (hadAmount ? oldAmount : 0d));
     }
+    int markReceivedBatch(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) return 0;
+        SQLiteDatabase db = getWritableDatabase();
+        ContentValues cv = new ContentValues(); cv.put("status", "received");
+        Set<Long> seen = new HashSet<>();
+        int changed = 0;
+        db.beginTransaction();
+        try {
+            for (Long id : ids) {
+                if (id == null || id <= 0 || !seen.add(id)) continue;
+                changed += db.update("dividends", cv, "_id=? AND status='expected'", new String[]{String.valueOf(id)});
+            }
+            db.setTransactionSuccessful();
+        } finally { db.endTransaction(); }
+        return changed;
+    }
     void deleteHolding(long id) {
         SQLiteDatabase db = getWritableDatabase(); db.beginTransaction();
         try { db.delete("dividends", "holding_id=?", new String[]{String.valueOf(id)}); db.delete("transactions", "holding_id=?", new String[]{String.valueOf(id)}); db.delete("holdings", "_id=?", new String[]{String.valueOf(id)}); db.delete("app_settings", "key=?", new String[]{"dividend_forecast_" + id}); db.setTransactionSuccessful(); }

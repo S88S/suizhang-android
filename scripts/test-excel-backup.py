@@ -33,7 +33,7 @@ assert 'throw new JSONException("为安全起见，不导入含公式的工作�
 assert 'name.contains("../")' in source and 'MAX_ENTRIES' in source
 assert 'validateBackup(accounts, holdings, dividends, transactions, goals, index, settings);' in database
 assert 'db.beginTransaction()' in database and 'db.setTransactionSuccessful();' in database
-assert "versionCode 21" in gradle and "versionName '1.4.7'" in gradle
+assert "versionCode 22" in gradle and "versionName '1.4.8'" in gradle
 
 # Ensure required XLSX package pieces are generated and spreadsheet cells are emitted as safe strings/numbers.
 for token in ["[Content_Types].xml", "xl/workbook.xml", "xl/_rels/workbook.xml.rels", "xl/styles.xml", "inlineStr", "autoFilter", "frozen"]:
