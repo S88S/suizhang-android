@@ -53,6 +53,11 @@ try:
     require("重开后历史来源、窗口和更新时间可恢复", reopened_meta["source"] == "historical_estimate" and reopened_meta["years"] == 3 and reopened_meta["updated_at"] > 0)
     reopened.close()
 finally:
-    if os.path.exists(db_path):
-        os.unlink(db_path)
+    # Cleanup must never mask the real assertion failure: on Windows an open
+    # handle makes unlink raise PermissionError and hide the actual error.
+    try:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+    except OSError:
+        pass
 print("通过：SQLite schema-4 保存/编辑/重开分红预测持久化回归")

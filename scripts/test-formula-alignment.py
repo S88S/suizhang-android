@@ -46,6 +46,11 @@ try:
     require("旧分红原金额保留，实际到账留空", dividend == (45.67, None))
     conn.close()
 finally:
-    if os.path.exists(db_path):
-        os.unlink(db_path)
+    # Never let cleanup mask the real assertion failure: an open handle makes
+    # unlink raise PermissionError on Windows, which would hide why the test failed.
+    try:
+        if os.path.exists(db_path):
+            os.unlink(db_path)
+    except OSError:
+        pass
 print("通过：schema-4 升级和公式边界离线回归")
