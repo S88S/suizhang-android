@@ -45,13 +45,20 @@ jobs:
 
       - name: Run source-level regression scripts
         # The Python scripts cover parsing, privacy and layout invariants that JUnit cannot reach.
+        # Failures are fatal on purpose: with continue-on-error a silently broken script looks
+        # identical to a passing one, which is how three of these went unrun for weeks.
+        # Scripts needing an external fixture report SKIP and exit 0, so they do not block.
         run: |
+          failed=0
           for f in scripts/test-*.py; do
             echo "::group::$f"
-            python3 "$f"
+            if ! python3 "$f"; then
+              echo "::error::$f failed"
+              failed=1
+            fi
             echo "::endgroup::"
           done
-        continue-on-error: true
+          exit $failed
 
       - name: Upload test reports
         if: always()
