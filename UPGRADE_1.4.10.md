@@ -55,6 +55,17 @@
 - **CI 补上 6 个从未执行的 Java 套件**：`.github/workflows/android.yml` 原先只遍历 `scripts/test-*.py`，`scripts/` 下 6 个由 `.sh` 驱动的 Java 测试（FinanceMath / DividendForecast / DividendBatchRules / MarketData / CalendarQuery / CalendarYearSummary）在 CI 中零执行。新增一步遍历 `scripts/test-*.sh`，同时激活 `test-calendar-query.py`——它是全套唯一跑真实 SQLite 的脚本，因缺少 fixture 在 CI 里恒定 SKIP。
 - 修掉 `test-market-data.sh` 里两条静默跳过：末尾三行 grep 原来包在 `if [ -x gradlew ]` 里，gradlew 不可执行时整段跳过并照样打印 PASS；`JAVA_HOME=...` 赋值后无人使用。
 
+### 大备份恢复的内存峰值
+
+`KNOWN_ISSUES.md` 里那条"JSON 导入闪退"始终没能复现，但峰值内存的形状是确定的：读进来的 `byte[]`（上限 10 MB）、`new String(bytes)` 解出来的 `char[]`（约 20 MB）、以及 `new JSONObject(json)` 物化出的对象树，三者**同时在堆上**，且全在主线程。本版做了两处改动降低峰值：
+
+- 文本生成后立即 `file = null`，让原始字节在解析开始前就可回收；
+- 解析提前到确认弹窗之前，格式错误的备份在读文件阶段就失败，而不是用户点了"验证并恢复"才失败。
+
+`LedgerDatabase` 相应增加 `importJson(JSONObject)` 重载，原字符串入口保留 10 MB 长度上限后转调新重载。
+
+需要说清楚的是：**这没有改变"导入仍在主线程"这一结构**，只是把峰值压下来。彻底搬离主线程 + 分批提交事务依旧需要真机验证才敢做。另外，我最初想用 `JSONTokener(Reader)` 直接从流解析以完全省掉中间 String——Android 的 `org.json` 只提供 `String` 构造器，编译通不过，已回退。
+
 ## 第二轮：数据一致性与外部输入硬化
 
 第一轮改完后又做了一轮针对"数据库与不可信输入"的复查，以下均为实测确认的缺陷。

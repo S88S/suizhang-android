@@ -62,7 +62,7 @@
 
 ## 五、需要你决策 / 提供的
 
-1. **GitHub 推送**：两个提交在本地，推送时 GitHub 出口返回 502（代理问题，不是凭据问题——读操作 `git ls-remote` 也时好时坏）。网络恢复后 `git push origin main` 即可。
+1. **GitHub 推送（已解决）**：git 的 smart-HTTP 走不通——代理对 `github.com:443` 的 CONNECT 隧道稳定返回 502，直连则超时，而 `api.github.com` 一直可达。最终改用 REST git-data API 逐个重建提交（blob → tree → commit → ref），因为树与提交都是内容寻址的，且作者、提交者、时间、报文、父提交均逐字复制，**远端生成的 SHA 与本地完全一致**，本地仓库无需变基即可对齐。5 个提交已全部落在 `S88S/suizhang-android` 的 `main` 上。
 2. **真机验证**：本轮所有界面改动（指标设置页、空态卡片、行情提示条、表单逐字段报错）都**只在构建与静态层面验证过**，没有在设备上看到。当前环境无 Android 设备，模拟器因 x86_64 镜像要求硬件加速（本机 `HypervisorPresent=False`）也起不来。
 3. **JSON 导入闪退**：要彻底确认，需要原始备份文件（含真实数据，建议先脱敏）、文件大小与各表行数、崩溃堆栈、崩溃发生的精确时点。见 `KNOWN_ISSUES.md`。
 4. **可选的下一步**（按我的优先级）：交易/分红删除编辑入口 > 导入链后台化 > targetSdk 35 > MainActivity 拆分。
@@ -71,10 +71,11 @@
 
 | 项 | 结果 |
 |---|---|
-| `./gradlew assembleDebug lint testDebugUnitTest` | BUILD SUCCESSFUL |
+| `./gradlew assembleDebug lint testDebugUnitTest` | BUILD SUCCESSFUL（含第二轮、第三轮改动后各复跑一次） |
 | JUnit | 6 个类 / **39** 例，0 失败（原 27 例） |
-| `scripts/test-*.py` | 20 通过 / 0 失败 / 1 跳过（新增 1 个脚本，含变异验证） |
+| `scripts/test-*.py` | 22 个脚本：21 通过 / 0 失败 / 1 跳过。跳过的 `test-easternfortune-ocr.py` 需要本地 JDK，CI 已配置 |
 | `scripts/test-*.sh` | 4 个套件断言全通过（44 / 12 / 53 / 62 条）。注：本地 `rc=1` 仅因沙箱拦截了脚本 `trap` 里的 `rm -rf` 临时目录清理，与断言无关；CI 上不存在该问题 |
 | `DividendBatchRulesTest` | 21 条通过（原 10 条） |
+| GitHub | 5 个提交已推送，`main` 与本地 SHA 逐一相同 |
 
 构建与静态回归通过**不等同于真机交互验收**。
