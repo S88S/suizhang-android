@@ -86,6 +86,20 @@ require("空态给出下一步动作，不再只有一行灰字",
 require("账户列表为空时也有说明",
         "还没有账户。新建一个可以把不同券商或不同用途的持仓分开记账。" in activity)
 
+# --- restore must not keep the raw bytes, a decoded String and the parsed tree alive at once ---
+require("恢复路径在生成文本后立即释放原始字节数组，避免三份数据同时在堆上",
+        "file = null;" in activity and "new String(file, StandardCharsets.UTF_8)" in activity)
+require("备份树在弹窗前解析完成，坏文件在读文件阶段就失败而不是点了确认才失败",
+        "final JSONObject parsed = new JSONObject(json);" in activity and "json = null;" in activity)
+require("确认弹窗持有已解析的备份树而不是原始文本",
+        "db.importJson(parsed)" in activity and "final JSONObject parsed" in activity)
+require("数据库提供接收已解析备份树的重载，非空即报错",
+        "void importJson(JSONObject root) throws JSONException" in database
+        and 'throw new JSONException("备份为空")' in database)
+require("旧的字符串入口保留长度上限后转为复用新重载",
+        'json.length() > 10_000_000' in database
+        and "importJson(new JSONObject(json));" in database)
+
 # --- reminder rules are now testable off-device ---
 require("提醒窗口规则抽出为不依赖 Android 的纯类",
         "final class DividendMilestones" in milestones

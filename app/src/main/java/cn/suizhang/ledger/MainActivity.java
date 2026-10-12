@@ -248,11 +248,20 @@ public class MainActivity extends AppCompatActivity {
                 byte[] file = readBackupBytes(uri);
                 boolean excel = isZipFile(file);
                 String json = excel ? ExcelBackup.importWorkbook(file) : new String(file, StandardCharsets.UTF_8);
+                // Drop the raw bytes before the tree is built: holding the 10 MB byte[], the decoded
+                // String and the parsed tree at the same time was the peak that ran large restores
+                // out of memory. Android's org.json has no streaming parser, so a String is
+                // unavoidable; the bytes are not.
+                file = null;
+                // Parsed here rather than inside the dialog, so a malformed backup fails while
+                // reading instead of after the user taps "验证并恢复".
+                final JSONObject parsed = new JSONObject(json);
+                json = null;
                 new MaterialAlertDialogBuilder(this).setTitle(excel ? "确认恢复 Excel 备份" : "确认恢复旧版 JSON 备份")
                         .setMessage("恢复会完整替换这台设备上的账户、持仓、分红、交易、目标、税率假设和本地索引。建议先导出当前 Excel 备份。工作簿字段与关联编号验证失败时不会改动现有数据。")
                         .setNegativeButton("取消", null)
                         .setPositiveButton("验证并恢复", (d, w) -> {
-                            try { db.importJson(json); selectedAccount = 0; render(); toast("备份恢复完成"); }
+                            try { db.importJson(parsed); selectedAccount = 0; render(); toast("备份恢复完成"); }
                             // OutOfMemoryError is an Error, not an Exception: without this arm a large
                             // backup turns into a silent crash instead of a message. Recovery already
                             // runs inside one transaction, so bailing out leaves the old data intact.

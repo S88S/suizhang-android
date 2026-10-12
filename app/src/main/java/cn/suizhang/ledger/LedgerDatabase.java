@@ -571,7 +571,16 @@ final class LedgerDatabase extends SQLiteOpenHelper {
     /** Full replacement is validated before opening a transaction; invalid JSON never touches live rows. */
     void importJson(String json) throws JSONException {
         if (json == null || json.length() > 10_000_000) throw new JSONException("备份为空或超过 10 MB");
-        JSONObject root = new JSONObject(json);
+        importJson(new JSONObject(json));
+    }
+
+    /**
+     * Restores from an already parsed tree. The caller reaches this path when it parsed the
+     * backup off a stream, which keeps a large restore from holding the raw bytes, a decoded
+     * String and the parsed tree in memory at the same time.
+     */
+    void importJson(JSONObject root) throws JSONException {
+        if (root == null) throw new JSONException("备份为空");
         int version = root.optInt("schema_version", -1);
         if (version < 1 || version > DB_VERSION) throw new JSONException("不支持的备份版本");
         JSONArray accounts = requiredArray(root, "accounts");
