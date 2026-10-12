@@ -356,8 +356,16 @@ final class EasternFortuneHoldingParser {
         String s = value == null ? "" : value.trim().replaceAll("\\s+", "");
         if (s.isEmpty() || s.length() > 16 || !s.matches("[\\u4e00-\\u9fffA-Za-z0-9·.&-]{2,16}") || NON_NAMES.contains(s)) return null;
         if (!s.matches(".*[\\u4e00-\\u9fffA-Za-z].*")) return null;
-        for (String token : new String[]{"持仓", "盈亏", "数量", "成本", "现价", "可用", "股东", "交易", "市值", "当日", "历史", "红利", "收益", "资产", "参考", "记录", "买入", "卖出", "持有", "场内", "基金", "证券", "股份"})
-            if (s.contains(token)) return null;
+        for (String token : new String[]{"持仓", "盈亏", "数量", "成本", "现价", "可用", "股东", "交易", "市值", "当日", "历史", "红利", "收益", "资产", "参考", "记录", "买入", "卖出", "持有", "场内", "基金", "证券", "股份"}) {
+            if (!s.contains(token)) continue;
+            // The tokens exist to drop column labels, but they also matched real holdings:
+            // 红利ETF (510880, seeded in the local index) and every 300ETF-style name were being
+            // silently discarded, leaving the field blank for manual entry. Known label phrases
+            // such as 红利入账 are still rejected by the exact NON_NAMES match above.
+            String upper = s.toUpperCase(Locale.ROOT);
+            if (s.matches(".*[0-9].*") || upper.endsWith("ETF") || upper.endsWith("LOF") || upper.endsWith("REIT")) continue;
+            return null;
+        }
         return s;
     }
 

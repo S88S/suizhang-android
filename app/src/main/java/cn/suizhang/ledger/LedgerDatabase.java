@@ -23,7 +23,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 final class LedgerDatabase extends SQLiteOpenHelper {
     private static final String DB_NAME = "suizhang-ledger.db";
-    private static final int DB_VERSION = 4;
+    // Package-private, not private: ExcelBackup stamps this into every workbook it writes. Keeping
+    // one source stops a future schema bump from being silently dropped on import.
+    static final int DB_VERSION = 4;
 
     LedgerDatabase(Context context) {
         super(context, DB_NAME, null, DB_VERSION);
@@ -77,6 +79,22 @@ final class LedgerDatabase extends SQLiteOpenHelper {
         db.execSQL("CREATE INDEX idx_dividends_exdate ON dividends(ex_date)");
         db.execSQL("CREATE UNIQUE INDEX idx_dividends_source_key ON dividends(source_key) WHERE source_key IS NOT NULL");
         db.execSQL("CREATE INDEX idx_holdings_account ON holdings(account_id)");
+        // Every render walks one holding's tax lots three times, and every later
+        // transactions/dividends read filtered by holding_id was a full table scan.
+        createIndexIfMissing(db, "idx_transactions_holding", "transactions", "holding_id");
+        createIndexIfMissing(db, "idx_dividends_holding", "dividends", "holding_id");
+    }
+
+    private static void createIndexIfMissing(SQLiteDatabase db, String index, String table, String column) {
+        db.execSQL("CREATE INDEX IF NOT EXISTS " + index + " ON " + table + "(" + column + ")");
+    }
+
+    @Override public synchronized void onOpen(SQLiteDatabase db) {
+        super.onOpen(db);
+        // Indexes added after the schema froze. IF NOT EXISTS lets already-installed databases
+        // pick them up here, so adding one never needs a version bump or migration path.
+        createIndexIfMissing(db, "idx_transactions_holding", "transactions", "holding_id");
+        createIndexIfMissing(db, "idx_dividends_holding", "dividends", "holding_id");
     }
 
     private void createExtras(SQLiteDatabase db) {
@@ -163,9 +181,12 @@ final class LedgerDatabase extends SQLiteOpenHelper {
         return query(sql + " ORDER BY d.pay_date", new String[]{yearValue});
     }
     JSONArray incomeSummary(long accountId, int year) {
+        // %04d, not String.valueOf: pay_date is matched by substr(...,1,4), so a year below 1000
+        // would otherwise compare "999" against "0999" and silently drop the whole year.
+        String yearValue = String.format(java.util.Locale.ROOT, "%04d", year);
         String sql = "SELECT d.currency,d.status,SUM(CASE WHEN d.status='received' THEN COALESCE(d.received_amount,d.total) ELSE d.total END) AS total,COUNT(*) AS count FROM dividends d WHERE substr(d.pay_date,1,4)=?";
-        if (accountId > 0) return query(sql + " AND d.account_id=? GROUP BY d.currency,d.status ORDER BY d.currency,d.status", new String[]{String.valueOf(year), String.valueOf(accountId)});
-        return query(sql + " GROUP BY d.currency,d.status ORDER BY d.currency,d.status", new String[]{String.valueOf(year)});
+        if (accountId > 0) return query(sql + " AND d.account_id=? GROUP BY d.currency,d.status ORDER BY d.currency,d.status", new String[]{yearValue, String.valueOf(accountId)});
+        return query(sql + " GROUP BY d.currency,d.status ORDER BY d.currency,d.status", new String[]{yearValue});
     }
     JSONArray receivedAllTime(long accountId) {
         String sql = "SELECT currency,SUM(COALESCE(received_amount,total)) AS total,COUNT(*) AS count FROM dividends WHERE status='received'";
@@ -208,7 +229,10 @@ final class LedgerDatabase extends SQLiteOpenHelper {
     JSONArray goals() { return query("SELECT * FROM expense_goals ORDER BY _id", null); }
     JSONArray assetIndex(String search) {
         String q = search == null ? "" : search.trim();
-        return query("SELECT * FROM asset_index WHERE code LIKE ? OR name LIKE ? ORDER BY market,code", new String[]{"%" + q + "%", "%" + q + "%"});
+        // Escape LIKE wildcards: searching "%" used to match every row in the index.
+        String pattern = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
+        return query("SELECT * FROM asset_index WHERE code LIKE ? ESCAPE '\\' OR name LIKE ? ESCAPE '\\' ORDER BY market,code",
+                new String[]{pattern, pattern});
     }
 
     long addAccount(String name) {
@@ -594,7 +618,12 @@ final class LedgerDatabase extends SQLiteOpenHelper {
         Map<Long, Long> holdingAccounts = new HashMap<>();
         for (int i = 0; i < holdings.length(); i++) {
             JSONObject r = holdings.optJSONObject(i); requireObject(r, "持仓");
-            if (r.optString("name").trim().isEmpty() || !accountIds.contains(r.optLong("account_id"))) throw new JSONException("持仓名称或所属账户无效");
+            if (r.optString("name").trim().isEmpty() || !accountIds.contains(r.optLong("account_id")))
+                throw new JSONException("第 " + (i + 1) + " 条持仓的名称或所属账户无效");
+            // These columns are NOT NULL; a missing one fails later inside insertRows with a bare
+            // constraint error that names neither the row nor the column.
+            if (r.optString("market").trim().isEmpty() || r.optString("currency").trim().isEmpty() || r.optString("created_at").trim().isEmpty())
+                throw new JSONException("第 " + (i + 1) + " 条持仓缺少市场、币种或创建时间");
             String costMethod = r.optString("cost_method", FinanceMath.COST_WEIGHTED_AVERAGE);
             boolean signedCostAllowed = FinanceMath.COST_DILUTED.equals(costMethod) || FinanceMath.COST_DIVIDEND_ADJUSTED.equals(costMethod);
             if (!(FinanceMath.COST_WEIGHTED_AVERAGE.equals(costMethod) || signedCostAllowed) || r.optDouble("quantity", -1) < 0 || (!signedCostAllowed && r.optDouble("cost", -1) < 0) || r.optDouble("tax_rate", 0.10) < 0 || r.optDouble("tax_rate", 0.10) > 1 || r.optDouble("annual_dividend_per_unit", 0) < 0) throw new JSONException("持仓数量、成本算法、派息或税率无效");
@@ -602,13 +631,25 @@ final class LedgerDatabase extends SQLiteOpenHelper {
         }
         validateLinkedRows(dividends, holdingIds, accountIds, holdingAccounts, "分红");
         validateLinkedRows(transactions, holdingIds, accountIds, holdingAccounts, "交易");
+        Set<String> sourceKeys = new HashSet<>();
         for (int i = 0; i < dividends.length(); i++) {
             JSONObject r = dividends.optJSONObject(i); String status = r.optString("status");
-            if (!("expected".equals(status) || "received".equals(status)) || r.optString("pay_date").trim().isEmpty() || r.optDouble("total", -1) < 0 || (!r.isNull("received_amount") && r.optDouble("received_amount", -1) < 0)) throw new JSONException("分红记录字段无效");
+            if (!("expected".equals(status) || "received".equals(status)) || r.optString("pay_date").trim().isEmpty() || r.optDouble("total", -1) < 0 || (!r.isNull("received_amount") && r.optDouble("received_amount", -1) < 0))
+                throw new JSONException("第 " + (i + 1) + " 条分红记录字段无效");
+            if (r.optString("currency").trim().isEmpty() || r.optString("created_at").trim().isEmpty())
+                throw new JSONException("第 " + (i + 1) + " 条分红缺少币种或创建时间");
+            // dividends has a unique index on source_key; a duplicated row copied inside the
+            // backup would otherwise abort the whole restore with a SQLite constraint error.
+            if (!r.isNull("source_key")) {
+                String key = r.optString("source_key", "");
+                if (!key.isEmpty() && !sourceKeys.add(key)) throw new JSONException("第 " + (i + 1) + " 条分红的来源编号重复：" + key);
+            }
         }
         for (int i = 0; i < transactions.length(); i++) {
             JSONObject r = transactions.optJSONObject(i); String side = r.optString("side");
-            if (!("买入".equals(side) || "卖出".equals(side)) || r.optDouble("quantity", 0) <= 0 || r.optDouble("price", -1) < 0 || r.optDouble("fees", -1) < 0) throw new JSONException("交易记录字段无效");
+            if (!("买入".equals(side) || "卖出".equals(side)) || r.optDouble("quantity", 0) <= 0 || r.optDouble("price", -1) < 0 || r.optDouble("fees", -1) < 0)
+                throw new JSONException("第 " + (i + 1) + " 条交易记录字段无效");
+            if (r.optString("created_at").trim().isEmpty()) throw new JSONException("第 " + (i + 1) + " 条交易缺少创建时间");
         }
         for (int i = 0; i < goals.length(); i++) {
             JSONObject r = goals.optJSONObject(i); requireObject(r, "目标");
@@ -674,13 +715,18 @@ final class LedgerDatabase extends SQLiteOpenHelper {
             while (c.moveToNext()) {
                 JSONObject row = new JSONObject();
                 for (int i = 0; i < c.getColumnCount(); i++) {
+                    String name = c.getColumnName(i);
                     try {
-                        int type = c.getType(i); String name = c.getColumnName(i);
+                        int type = c.getType(i);
                         if (type == Cursor.FIELD_TYPE_NULL) row.put(name, JSONObject.NULL);
                         else if (type == Cursor.FIELD_TYPE_INTEGER) row.put(name, c.getLong(i));
                         else if (type == Cursor.FIELD_TYPE_FLOAT) row.put(name, c.getDouble(i));
                         else row.put(name, c.getString(i));
-                    } catch (JSONException ignored) { }
+                    } catch (JSONException lost) {
+                        // Used to be swallowed outright, so a column missing from a row looked
+                        // like a normal row that happened to have no such field.
+                        android.util.Log.w("Suizhang", "备份/查询结果缺少字段：" + name, lost);
+                    }
                 }
                 result.put(row);
             }

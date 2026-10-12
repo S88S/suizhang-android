@@ -55,10 +55,49 @@
 - **CI 补上 6 个从未执行的 Java 套件**：`.github/workflows/android.yml` 原先只遍历 `scripts/test-*.py`，`scripts/` 下 6 个由 `.sh` 驱动的 Java 测试（FinanceMath / DividendForecast / DividendBatchRules / MarketData / CalendarQuery / CalendarYearSummary）在 CI 中零执行。新增一步遍历 `scripts/test-*.sh`，同时激活 `test-calendar-query.py`——它是全套唯一跑真实 SQLite 的脚本，因缺少 fixture 在 CI 里恒定 SKIP。
 - 修掉 `test-market-data.sh` 里两条静默跳过：末尾三行 grep 原来包在 `if [ -x gradlew ]` 里，gradlew 不可执行时整段跳过并照样打印 PASS；`JAVA_HOME=...` 赋值后无人使用。
 
+## 第二轮：数据一致性与外部输入硬化
+
+第一轮改完后又做了一轮针对"数据库与不可信输入"的复查，以下均为实测确认的缺陷。
+
+### 年度统计在年份小于 1000 时会漏数据
+
+`incomeSummary` 用 `String.valueOf(year)` 拼年份，再交给 `substr(pay_date,1,4)` 过滤。年份一旦不是四位数（例如 999 年，`"999-01-01"` 只有三位），前缀比对永远失配，整年收入静默变 0。改为 `String.format(Locale.ROOT, "%04d", year)`。
+
+### 两条高频外键没有索引
+
+`transactions` 与 `dividends` 都按 `holding_id` 反复查询（持仓详情、税务估算、批量确认），却没有索引；数据量大时每条持仓走一次全表扫描。新增 `idx_transactions_holding`、`idx_dividends_holding`。
+
+因为索引不改变 schema 语义，本版**没有**提升 `DB_VERSION`——那样会强制所有已安装用户跑一次迁移。改为在 `onOpen()` 里 `CREATE INDEX IF NOT EXISTS`（幂等），已安装的应用打开一次即补上，新建库仍由 `onCreate()` 建全。
+
+### 资产搜索的通配符没有转义
+
+`assetIndex` 把用户输入直接拼进 `LIKE '%...%'`，`%` 与 `_` 被当成通配符。搜 `_` 会命中任意单字符、搜 `%` 会命中全部持仓。补上 `ESCAPE '\'` 并转义这两个字符。
+
+### 日历查询会漏掉"账户已删"的持仓
+
+`CalendarQuery` 对 `holdings` 与 `accounts` 用 `JOIN`。持仓指向的账户若被删除或导入时缺行，整条持仓从日历里消失，且没有任何提示。改成 `LEFT JOIN`，持仓不再因账户缺行而丢失。
+
+### 备份恢复的报错不带行号
+
+`validateBackup` 只说"某字段非法"，Excel 里几百行时无从定位。现在报错带"第 N 条"；同时补上对 `market`、`currency`、`created_at` 三个 NOT NULL 列的校验（原先漏检，导入后由 SQLite 抛 NOT NULL 约束异常），以及 `source_key` 重复检测——重复会导致同一笔分红在导入后被记账两次。
+
+### 关于 COALESCE 的一个自我更正
+
+复查时怀疑 `incomeSummary` 用 `COALESCE(实际到账, 预估)` 会把"确实派发 0 元"的分红替换成预估值，虚增收入。写了 SQLite 模拟验证，结论是**不会**：`COALESCE` 只在 NULL 时替换，实到 0.0 是有效数值，原样保留。两处"修复"已回退，原逻辑不动，模拟用例改为断言正确行为并留在 `scripts/test-data-integrity.py` 里，避免以后有人重犯这个误判。
+
+### 其他
+
+- `ExcelBackup`：导入前校验 ZIP 文件头（`0x50 0x4B`），把非 xlsx 文件（改名的 txt、损坏的下载）挡在解析之前，提示"这不是 .xlsx 文件（缺少 ZIP 文件头）"；拒收含重复条目的压缩包；`schema_version` 改为引用 `LedgerDatabase.DB_VERSION`，不再写死常量。
+- `MarketDataClient`：`quotes()` 拆成按 `QUOTE_BATCH_SIZE = 50` 分批请求，持仓多时不再一次打超长 URL；User-Agent 携带 `APP_VERSION`；`setUseCaches(false)` 关掉 `HttpURLConnection` 的响应缓存；失败时读取 `getErrorStream()`，服务端返回的原因不再被丢掉。
+- `EasternFortuneHoldingParser`：名称过滤原先剔除"含数字"的 token，会把"红利ETF"这类正常持仓名误判为无关行丢掉。改为仅剔除数字开头且以 ETF/LOF/REIT 结尾的行。
+- `DividendReminderWorker`：通知改用固定 `REMINDER_ID`，每日重复运行是替换而不是堆叠；窗口为空时 `cancel()` 掉上一次的通知，过期提醒不再留在通知栏。
+- `query()` 的 `JSONException` 原先被完全吞掉，缺字段的行看起来跟正常行一样。现在记日志（含列名）。
+
 ## 兼容与验证
 
 - 版本：`1.4.10-debug`，`versionCode 24`；最低 Android 10/API 29。
 - 数据库 schema 仍为 4，不新增迁移、权限、数据源或后台任务。
 - 保持暖麦金/炭灰主题、分红现金流重点、涨红跌绿、窄屏与大字号布局，不恢复"规划"底部 tab。
-- 本轮回归：`scripts/test-*.py` 全通过（含新增脚本），`scripts/DividendBatchRulesTest` 21 条通过。
+- 新增 `scripts/test-data-integrity.py`，冻结本轮修复（年份补零、索引、`LIKE` 转义、`LEFT JOIN`、备份校验、Excel 硬化、行情分批、User-Agent、错误流），并内含一段真实 SQLite 模拟验证 `COALESCE` 行为。
+- 本轮回归：`scripts/test-*.py` 22 个脚本 21 通过 / 1 跳过（跳过的 `test-easternfortune-ocr.py` 需要本地 JDK，CI 已配置）；JUnit 6 个套件 39 条全通过；`scripts/test-*.sh` 4 个套件全通过；`assembleDebug` + `lint` + `testDebugUnitTest` BUILD SUCCESSFUL。
 - 构建与静态回归通过**不等同于真机交互验收**；当前工作环境没有连接 Android 设备或模拟器，R8 运行时行为与本版界面改动仍未在真机上看到。

@@ -142,6 +142,11 @@ final class ExcelBackup {
         if (workbook == null || workbook.length < 4 || workbook.length > MAX_FILE_BYTES) {
             throw new JSONException("Excel 文件为空或超过 10 MB");
         }
+        // Check the ZIP magic before feeding it to the reader: a renamed .txt or a truncated
+        // download used to fail later with an opaque stream error.
+        if ((workbook[0] & 0xFF) != 0x50 || (workbook[1] & 0xFF) != 0x4B) {
+            throw new JSONException("这不是 .xlsx 文件（缺少 ZIP 文件头）");
+        }
         Map<String, byte[]> entries = unzip(workbook);
         byte[] workbookXml = entries.get("xl/workbook.xml");
         byte[] relsXml = entries.get("xl/_rels/workbook.xml.rels");
@@ -152,7 +157,9 @@ final class ExcelBackup {
 
         JSONObject root = new JSONObject();
         root.put("app", "穗账");
-        root.put("schema_version", 4);
+        // Read the live constant. Hardcoding 4 here meant the next schema bump would round-trip
+        // silently, dropping every new column on import.
+        root.put("schema_version", LedgerDatabase.DB_VERSION);
         root.put("exported_at", Instant.now().toString());
         for (Sheet definition : DATA_SHEETS) {
             String path = sheets.get(definition.name);
@@ -376,6 +383,9 @@ final class ExcelBackup {
                 String name = entry.getName().replace('\\', '/');
                 if (name.startsWith("/") || name.contains("../") || name.equals("..")) throw new JSONException("Excel 文件路径无效");
                 if (entry.isDirectory()) continue;
+                // A second entry with the same name would silently replace the first. That is how
+                // a crafted workbook can swap a data sheet for a different one mid-import.
+                if (files.containsKey(name)) throw new JSONException("Excel 文件内含重复条目：" + name);
                 ByteArrayOutputStream out = new ByteArrayOutputStream();
                 byte[] buffer = new byte[8192];
                 int n;

@@ -23,6 +23,14 @@ import java.util.regex.Pattern;
 /** Optional public-data enrichment. Only public ticker codes or search words leave the device. */
 final class MarketDataClient {
     static final long QUOTE_TTL_MS = 15 * 60_000L;
+    /** Tickers per quote request. Keeps the query string inside what the endpoint accepts. */
+    private static final int QUOTE_BATCH_SIZE = 50;
+    /**
+     * Sent as the User-Agent. Kept as a plain constant rather than BuildConfig so this class still
+     * compiles standalone in scripts/test-market-data.sh; scripts/test-market-data.py pins it to
+     * the Gradle versionName so it cannot drift.
+     */
+    static final String APP_VERSION = "1.4.10";
     static final long DIVIDEND_TTL_MS = 24 * 60 * 60_000L;
     private static final int TIMEOUT_MS = 8_000;
     private final SharedPreferences cache;
@@ -128,23 +136,45 @@ final class MarketDataClient {
         ArrayList<Security> supported = new ArrayList<>();
         for (Security s : securities) if (s != null && isQuoteMarket(s.market) && !s.code.isEmpty()) supported.add(s);
         if (supported.isEmpty()) return new Snapshot<>(Collections.emptyList(), 0, false, "当前无可查询的 A 股/港股代码");
+        ArrayList<Quote> collected = new ArrayList<>();
+        long updatedAt = 0;
+        boolean anyStale = false;
+        String failure = null;
+        // One request per batch. Every code used to go into a single unbounded URL, which grows
+        // past what the endpoint accepts on a large portfolio; one batch still means one request
+        // for any portfolio up to QUOTE_BATCH_SIZE, so the common case is unchanged.
+        for (int start = 0; start < supported.size(); start += QUOTE_BATCH_SIZE) {
+            Snapshot<Quote> part = fetchQuotes(supported.subList(start, Math.min(supported.size(), start + QUOTE_BATCH_SIZE)));
+            if (!part.rows.isEmpty()) {
+                collected.addAll(part.rows);
+                updatedAt = Math.max(updatedAt, part.updatedAt);
+                anyStale = anyStale || part.cached;
+            }
+            if (part.warning != null && failure == null) failure = part.warning;
+        }
+        if (collected.isEmpty())
+            return new Snapshot<>(Collections.emptyList(), 0, false, failure == null ? "行情暂不可用；成本和账本不受影响" : failure);
+        return new Snapshot<>(collected, updatedAt, false, null, anyStale);
+    }
+
+    private Snapshot<Quote> fetchQuotes(List<Security> batch) {
         StringBuilder symbols = new StringBuilder();
-        for (Security s : supported) { String ticker = quoteTicker(s); if (ticker.isEmpty()) continue; if (symbols.length() > 0) symbols.append(','); symbols.append(ticker); }
+        for (Security s : batch) { String ticker = quoteTicker(s); if (ticker.isEmpty()) continue; if (symbols.length() > 0) symbols.append(','); symbols.append(ticker); }
         if (symbols.length() == 0) return new Snapshot<>(Collections.emptyList(), 0, false, "该市场暂不支持行情查询");
         String key = "quote:" + symbols;
         CachedRaw saved = cached(key);
         if (saved != null && isCacheFresh(saved.time, System.currentTimeMillis(), QUOTE_TTL_MS)) {
-            List<Quote> cachedRows = parseQuotes(saved.body, supported, saved.time, false);
+            List<Quote> cachedRows = parseQuotes(saved.body, batch, saved.time, false);
             if (!cachedRows.isEmpty()) return new Snapshot<>(cachedRows, saved.time, false, null, true);
         }
         try {
             String body = request("https://qt.gtimg.cn/q=" + encPath(symbols.toString()), true);
-            List<Quote> rows = parseQuotes(body, supported, System.currentTimeMillis(), false);
+            List<Quote> rows = parseQuotes(body, batch, System.currentTimeMillis(), false);
             if (rows.isEmpty()) throw new IllegalArgumentException("行情返回无可识别证券");
             save(key, body);
             return new Snapshot<>(rows, System.currentTimeMillis(), false, null);
         } catch (Exception ex) {
-            List<Quote> fallback = saved == null ? Collections.emptyList() : parseQuotes(saved.body, supported, saved.time, true);
+            List<Quote> fallback = saved == null ? Collections.emptyList() : parseQuotes(saved.body, batch, saved.time, true);
             return new Snapshot<>(fallback, saved == null ? 0 : saved.time, !fallback.isEmpty(),
                     fallback.isEmpty() ? "行情暂不可用；成本和账本不受影响" : "行情刷新失败，显示本机缓存价", !fallback.isEmpty());
         }
@@ -281,16 +311,30 @@ final class MarketDataClient {
         try {
             connection = (HttpURLConnection) new URL(url).openConnection();
             connection.setRequestMethod("GET"); connection.setConnectTimeout(TIMEOUT_MS); connection.setReadTimeout(TIMEOUT_MS);
-            connection.setRequestProperty("User-Agent", "Suizhang-Android/1.3 (public data; local-only holdings)");
+            connection.setRequestProperty("User-Agent", "Suizhang-Android/" + APP_VERSION + " (public data; local-only holdings)");
             connection.setRequestProperty("Accept", "application/json,text/plain,*/*");
+            connection.setUseCaches(false);
             int code = connection.getResponseCode();
-            if (code < 200 || code >= 300) throw new IllegalStateException("HTTP " + code);
+            if (code < 200 || code >= 300) throw new IllegalStateException("HTTP " + code + " " + errorBody(connection));
             try (InputStream in = connection.getInputStream(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
                 byte[] buffer = new byte[8192]; int n; int total = 0;
                 while ((n = in.read(buffer)) != -1) { total += n; if (total > 2_000_000) throw new IllegalStateException("响应超过 2MB"); out.write(buffer, 0, n); }
                 return new String(out.toByteArray(), gbk ? Charset.forName("GBK") : StandardCharsets.UTF_8);
             }
         } finally { if (connection != null) connection.disconnect(); }
+    }
+
+    /** First bytes of an error response. Without it a 4xx is only ever reported as a bare code. */
+    private static String errorBody(HttpURLConnection connection) {
+        InputStream error = connection.getErrorStream();
+        if (error == null) return "";
+        try (InputStream in = error; ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[512]; int n;
+            while ((n = in.read(buffer)) != -1 && out.size() < 512) out.write(buffer, 0, n);
+            return out.toString(StandardCharsets.UTF_8.name()).replaceAll("\\s+", " ").trim();
+        } catch (Exception ignored) {
+            return "";
+        }
     }
 
     private CachedRaw cached(String key) {

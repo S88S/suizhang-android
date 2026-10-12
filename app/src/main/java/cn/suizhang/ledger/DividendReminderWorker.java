@@ -37,6 +37,8 @@ import java.util.concurrent.TimeUnit;
 public final class DividendReminderWorker extends Worker {
 
     static final String CHANNEL_ID = "dividend_milestones";
+    /** Single reminder slot: today's run replaces yesterday's, and an empty window clears it. */
+    static final int REMINDER_ID = 1001;
     private static final String WORK_NAME = "suizhang_dividend_reminder";
 
     public DividendReminderWorker(@NonNull Context context, @NonNull WorkerParameters params) {
@@ -61,7 +63,9 @@ public final class DividendReminderWorker extends Worker {
         }
         try {
             String message = buildReminderText(context);
-            if (message != null) notify(context, message);
+            // With nothing in the window, drop the previous reminder. It used to stay in the shade
+            // indefinitely after the ledger changed, describing dividends that no longer exist.
+            if (message != null) notify(context, message); else cancel(context);
         } catch (Exception e) {
             // Never let a reminder failure crash or retry-loop; tomorrow's run can still succeed.
             return Result.success();
@@ -121,6 +125,14 @@ public final class DividendReminderWorker extends Worker {
                 .setContentIntent(pending)
                 .setAutoCancel(true)
                 .build();
-        manager.notify(1001, notification);
+        // One stable id: each daily run replaces the previous reminder instead of stacking one
+        // notification per day, which is what a per-event id would do inside a 7-day window.
+        manager.notify(REMINDER_ID, notification);
     }
+
+    private static void cancel(Context context) {
+        NotificationManager manager = context.getSystemService(NotificationManager.class);
+        if (manager != null) manager.cancel(REMINDER_ID);
+    }
+
 }

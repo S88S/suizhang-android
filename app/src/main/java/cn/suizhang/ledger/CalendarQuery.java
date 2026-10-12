@@ -20,7 +20,10 @@ final class CalendarQuery {
         String safeMonth = month == null ? "" : month.trim();
         StringBuilder sql = new StringBuilder(
                 "SELECT d.*,h.name AS holding_name,h.code AS holding_code,h.tax_rate AS holding_tax_rate,h.market AS holding_market,h.tax_mode AS holding_tax_mode,h.quantity AS holding_quantity,a.name AS account_name " +
-                "FROM dividends d JOIN holdings h ON h._id=d.holding_id JOIN accounts a ON a._id=d.account_id " +
+                // LEFT JOIN, not INNER: incomeSummary and receivedAllTime read dividends without
+                // joining, so a row whose holding or account row is missing used to be counted in
+                // the totals yet silently disappear from the calendar. Better to show it blank.
+                "FROM dividends d LEFT JOIN holdings h ON h._id=d.holding_id LEFT JOIN accounts a ON a._id=d.account_id " +
                 "WHERE (substr(d.pay_date,1,7)=? OR substr(COALESCE(d.record_date,''),1,7)=? OR substr(COALESCE(d.ex_date,''),1,7)=?)");
         ArrayList<String> args = new ArrayList<>();
         args.add(safeMonth);
