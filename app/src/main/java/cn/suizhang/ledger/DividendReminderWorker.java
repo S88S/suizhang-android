@@ -123,6 +123,7 @@ public final class DividendReminderWorker extends Worker {
                 .setContentText(message)
                 .setStyle(new NotificationCompat.BigTextStyle().bigText(message))
                 .setContentIntent(pending)
+                .setVisibility(NotificationCompat.VISIBILITY_SECRET)
                 .setAutoCancel(true)
                 .build();
         // One stable id: each daily run replaces the previous reminder instead of stacking one

@@ -120,6 +120,10 @@ Signer #1 certificate SHA-256 digest: e838b53250276123feb08f5f8e45520bdf6543bf20
 
 证书摘要与上表 `keytool` 的 SHA256 指纹逐字节一致，确认签的就是那个密钥。包名 `cn.suizhang.ledger`、versionCode 25、versionName 1.4.11、targetSdk 34。产物已复制到仓库根目录 `suizhang-android-release-1.4.11.apk`（`*.apk` 已被忽略，不进公开仓库）。
 
+## 1.4.12 实测结果
+
+沿用同一 release 密钥（指纹不变）。`assembleRelease` + `assembleDebug` + `lint` + `testDebugUnitTest` 全绿，42 个单元测试 0 失败。产物 `app-release.apk` 已复制到仓库根目录 `suizhang-android-release-1.4.12.apk` 与 `suizhang-android-release.apk`（均被 `*.apk` 忽略，不进公开仓库）。包名 `cn.suizhang.ledger`、versionCode 26、versionName 1.4.12、targetSdk 34，`apksigner verify` 显示 Signer #1 的 SHA-256 仍为 `e838b53250276123feb08f5f8e45520bdf6543bf20def7f333b3c2c589e3cb32`。
+
 ## 说明
 
 - R8 混淆已开启（`minifyEnabled true` + `shrinkResources true`），混淆后的运行时行为**必须在真机冒烟验证**，源码检查无法替代

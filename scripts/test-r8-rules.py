@@ -52,4 +52,8 @@ require("混淆规则未放宽到全量保留（否则等于没开）",
 require("数据库 schema 为 5（混淆不改结构）",
         "DB_VERSION = 5" in database and "oldVersion < 6" not in database)
 
+require("无效的 org.json keep 规则已移除（org.json 来自 android.jar，R8 不会裁剪）",
+        "-keepclassmembers class org.json.**" not in rules
+        and "org.json ships with the Android runtime" in rules)
+
 print("通过：R8 混淆配置与 keep 规则回归完成；反射入口的保留只能证明规则存在，真机仍需冒烟验证。")

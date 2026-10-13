@@ -111,4 +111,36 @@ require("提醒 Worker 改为委托纯规则，自己不重复实现窗口判断
         "DividendMilestones.milestoneOf(" in worker
         and "ChronoUnit" not in worker)
 
+# --- 1.4.12 review remediation guards ---
+# M2: a backup can no longer smuggle in an unknown column or table name.
+require("导入白名单化：未知字段被拒",
+        "private static final java.util.Map<String, java.util.Set<String>> KNOWN_COLUMNS;" in database
+        and "if (!columns.contains(key)) throw new JSONException(\"备份含未知字段：\" + table + \".\" + key);" in database)
+require("导入白名单化：未知表被拒",
+        "throw new JSONException(\"备份含未知表：\" + table);" in database)
+
+# M3: downgrades are refused with an explicit message instead of an opaque SQLiteException.
+require("禁止降级并给出可读提示",
+        "@Override public synchronized void onDowngrade(" in database
+        and "数据库已为 v" in database)
+
+# M4: the public-dividend upsert is a single atomic check-then-write.
+_apd = database[database.index("boolean addPublicDividend("):database.index("double estimatedQuantityAt(")]
+require("公开分红查写原子化（事务 + 唯一键冲突忽略）",
+        "beginTransaction()" in _apd and "insertWithOnConflict(\"dividends\"" in _apd and "endTransaction()" in _apd)
+
+# M5: exportJson takes a consistent snapshot under a read transaction.
+_exp = database[database.index("String exportJson()"):database.index("void importJson(String json)")]
+require("导出备份在事务内取一致快照",
+        "db.beginTransaction();" in _exp and "db.endTransaction();" in _exp)
+
+# M9: manual dividends freeze the holding quantity they were entered against, and the display
+# no longer calls a legacy zero-snapshot entry "pending correction".
+require("手工分红记录登记数量快照",
+        "cv.put(\"record_quantity\", recordQuantity)" in database)
+require("手工分红展示不再恒显待校正", "按录入时持仓估算" in activity)
+
+# 🟡-2: reminder content (holding name) must not show on the lock screen.
+require("分红提醒通知锁屏隐藏", "setVisibility(NotificationCompat.VISIBILITY_SECRET)" in worker)
+
 print("通过：防御性修复与可打磨项回归；源码断言不替代 Android 设备验证。")

@@ -13,12 +13,10 @@ final class FinanceMath {
 
     private FinanceMath() {}
 
+    /** Convenience wrapper for the weighted-average buy step; identical math to {@link #costAfterBuy}. */
     static double weightedBuyCost(double oldQuantity, double oldUnitCost,
                                   double buyQuantity, double buyPrice, double fees) {
-        if (oldQuantity < 0 || oldUnitCost < 0 || buyQuantity <= 0 || buyPrice < 0 || fees < 0) {
-            throw new IllegalArgumentException("数量、成本、价格或手续费不合法");
-        }
-        return (oldQuantity * oldUnitCost + buyQuantity * buyPrice + fees) / (oldQuantity + buyQuantity);
+        return costAfterBuy(COST_WEIGHTED_AVERAGE, oldQuantity, oldUnitCost, buyQuantity, buyPrice, fees);
     }
 
     /** All supported cost bases include buy fees in the amount invested. */
@@ -54,12 +52,16 @@ final class FinanceMath {
         return remainingBasis / remaining;
     }
 
-    /** Deducts an explicitly entered net cash receipt only for dividend-adjusted cost. */
+    /**
+     * Deducts an explicitly entered net cash receipt only for dividend-adjusted cost.
+     * A negative receipt (e.g. a charge or tax that exceeded the payout) raises the basis back
+     * up rather than being rejected; only non-finite values are truly invalid input here.
+     */
     static double costAfterReceivedDividend(String method, double quantity, double unitCost,
                                             double actualNetReceipt) {
         requireCostMethod(method);
         if (quantity < 0 || !Double.isFinite(quantity) || !Double.isFinite(unitCost) ||
-                actualNetReceipt < 0 || !Double.isFinite(actualNetReceipt)) {
+                !Double.isFinite(actualNetReceipt)) {
             throw new IllegalArgumentException("到账金额或持仓成本不合法");
         }
         if (!COST_DIVIDEND_ADJUSTED.equals(method) || quantity <= 0d) return unitCost;
@@ -72,7 +74,8 @@ final class FinanceMath {
     }
 
     static double sellQuantity(double oldQuantity, double sellQuantity) {
-        if (oldQuantity < 0 || sellQuantity <= 0 || sellQuantity > oldQuantity + 1e-8) {
+        if (!Double.isFinite(oldQuantity) || !Double.isFinite(sellQuantity)
+                || oldQuantity < 0 || sellQuantity <= 0 || sellQuantity > oldQuantity + 1e-8) {
             throw new IllegalArgumentException("卖出数量超过持仓或不合法");
         }
         return Math.max(0d, oldQuantity - sellQuantity);

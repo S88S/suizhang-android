@@ -141,4 +141,20 @@ public class FinanceMathJUnitTest {
         near("零再投资时仅年度定投推动期初资产", noReinvest.get(1).opening, 600);
         near("零再投资时年度投入继续计入期末", noReinvest.get(1).closing, 700);
     }
+
+    @Test public void negativeReceiptRaisesBasis() {
+        // R2 fix: a negative net receipt (charge/tax exceeding the payout) must raise the basis
+        // back up, not crash the cost replay. (10*12 - (-5)) / 10 = 12.5.
+        near("负实收抬高单位成本", FinanceMath.costAfterReceivedDividend(FinanceMath.COST_DIVIDEND_ADJUSTED, 10, 12, -5), 12.5);
+        near("零实收不改动成本", FinanceMath.costAfterReceivedDividend(FinanceMath.COST_DIVIDEND_ADJUSTED, 10, 12, 0), 12);
+        expectFailure("非有限实收仍被拒绝", () -> FinanceMath.costAfterReceivedDividend(FinanceMath.COST_DIVIDEND_ADJUSTED, 10, 12, Double.NaN));
+    }
+
+    @Test public void finiteGuardsOnSellQuantity() {
+        // M10 fix: non-finite inputs to sellQuantity used to flow through as NaN; now rejected.
+        expectFailure("NaN 卖出数量被拒绝", () -> FinanceMath.sellQuantity(15, Double.NaN));
+        expectFailure("NaN 持仓数量被拒绝", () -> FinanceMath.sellQuantity(Double.NaN, 4));
+        expectFailure("负持仓被拒绝", () -> FinanceMath.sellQuantity(-1, 4));
+        near("正常卖出仍正确", FinanceMath.sellQuantity(15, 4), 11);
+    }
 }

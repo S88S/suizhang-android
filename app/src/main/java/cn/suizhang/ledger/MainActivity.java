@@ -1256,7 +1256,11 @@ private void showHome() {
         }
         double net = FinanceMath.afterTax(gross, taxRate);
         boolean actualKnown = !e.isNull("received_amount"); double actual = actualKnown ? e.optDouble("received_amount") : gross;
-        String quantityText = e.optDouble("record_quantity") > 0 ? compact(e.optDouble("record_quantity")) + " 股" : "登记股数待校正";
+        double recordedQty = e.optDouble("record_quantity");
+        // A frozen snapshot is best; legacy manual entries kept no snapshot, but their total was
+        // already derived from the holding quantity at entry, so "estimated" is honest, not "pending".
+        String quantityText = recordedQty > 0 ? compact(recordedQty) + " 股"
+                : "manual".equals(e.optString("data_class", "manual")) ? "按录入时持仓估算" : "登记股数待校正";
         String perShare = amount(curr, e.optDouble("amount_per_share"));
         String payDate = e.optString("pay_date_estimated").equals("1") || e.optInt("pay_date_estimated") == 1 ? "约 " : "";
         String amountLabel = received ? (actualKnown ? "实际到账 " : "到账记录额 ") + amount(curr, actual) : "预计记录额 " + amount(curr, gross);
@@ -2309,9 +2313,13 @@ private void showHome() {
             if (actual != null && (!Double.isFinite(actual) || actual < 0d)) { actualReceived.setError("实际到账金额不能为负或无效"); return; }
             if (actual != null && !"received".equals(state)) { actualReceived.setError("请先将状态设为已到账"); return; }
             if (existing != null) {
-                if (!db.updateDividend(editId, h.optLong("_id"), h.optLong("account_id"), p, p * h.optDouble("quantity"), h.optString("currency"), blankToNull(recordDate.getText().toString()), blankToNull(exDate.getText().toString()), date.toString(), state, rate, known, actual, note.getText().toString().trim())) { perShare.setError("保存失败，请重试"); return; }
+                try {
+                    if (!db.updateDividend(editId, h.optLong("_id"), h.optLong("account_id"), p, p * h.optDouble("quantity"), h.optString("currency"), blankToNull(recordDate.getText().toString()), blankToNull(exDate.getText().toString()), date.toString(), state, rate, known, actual, note.getText().toString().trim(), h.optDouble("quantity"))) { perShare.setError("保存失败，请重试"); return; }
+                } catch (Exception ex) { perShare.setError("保存失败，请重试"); return; }
             } else {
-                db.addDividend(h.optLong("_id"), h.optLong("account_id"), p, p * h.optDouble("quantity"), h.optString("currency"), blankToNull(recordDate.getText().toString()), blankToNull(exDate.getText().toString()), date.toString(), state, rate, known, actual, note.getText().toString().trim());
+                try {
+                    db.addDividend(h.optLong("_id"), h.optLong("account_id"), p, p * h.optDouble("quantity"), h.optString("currency"), blankToNull(recordDate.getText().toString()), blankToNull(exDate.getText().toString()), date.toString(), state, rate, known, actual, note.getText().toString().trim(), h.optDouble("quantity"));
+                } catch (Exception ex) { perShare.setError("保存失败，请重试"); return; }
             }
             hideKeyboard(d); d.dismiss(); render(); toast(existing == null ? "分红事件已保存" : "分红事件已更新"); })); showFormDialog(d); update.run();
     }

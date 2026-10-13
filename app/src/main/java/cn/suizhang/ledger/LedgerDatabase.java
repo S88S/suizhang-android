@@ -144,7 +144,10 @@ final class LedgerDatabase extends SQLiteOpenHelper {
             db.execSQL("ALTER TABLE holdings ADD COLUMN opened_on TEXT NOT NULL DEFAULT ''");
             db.execSQL("ALTER TABLE holdings ADD COLUMN initial_quantity REAL NOT NULL DEFAULT 0");
             db.execSQL("ALTER TABLE holdings ADD COLUMN tax_mode TEXT NOT NULL DEFAULT 'manual'");
-            db.execSQL("UPDATE holdings SET opened_on=substr(created_at,1,10), initial_quantity=MAX(0, quantity-COALESCE((SELECT SUM(CASE WHEN t.side='买入' THEN t.quantity ELSE -t.quantity END) FROM transactions t WHERE t.holding_id=holdings._id),0))");
+            // created_at is a UTC audit timestamp; never truncate it with substr() to get the
+            // business date. Use date(...,'localtime') so a record made late at night still lands
+            // on the correct local calendar day instead of being pushed back a day before 08:00.
+            db.execSQL("UPDATE holdings SET opened_on=date(created_at,'localtime'), initial_quantity=MAX(0, quantity-COALESCE((SELECT SUM(CASE WHEN t.side='买入' THEN t.quantity ELSE -t.quantity END) FROM transactions t WHERE t.holding_id=holdings._id),0))");
             db.execSQL("ALTER TABLE dividends ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'");
             db.execSQL("ALTER TABLE dividends ADD COLUMN source_key TEXT");
             db.execSQL("ALTER TABLE dividends ADD COLUMN data_class TEXT NOT NULL DEFAULT 'manual'");
@@ -171,6 +174,17 @@ final class LedgerDatabase extends SQLiteOpenHelper {
             db.execSQL("ALTER TABLE holdings ADD COLUMN opening_cost REAL NOT NULL DEFAULT 0");
             backfillOpeningCost(db);
         }
+    }
+
+    /**
+     * Downgrades are never supported: a newer schema may store data the old one cannot read, so
+     * dropping columns would silently corrupt or lose it. Android's default throws an opaque
+     * SQLiteException; this makes the cause explicit for whoever wires an older APK to this DB.
+     */
+    @Override public synchronized void onDowngrade(SQLiteDatabase db, int oldVersion, int newVersion) {
+        throw new IllegalStateException(
+                "数据库已为 v" + oldVersion + "，无法降级到 v" + newVersion +
+                "。请升级应用，或清空数据后重新导入备份。");
     }
 
     /**
@@ -490,12 +504,14 @@ final class LedgerDatabase extends SQLiteOpenHelper {
     }
     long addDividend(long holdingId, long accountId, double perShare, double total, String currency,
                      String recordDate, String exDate, String payDate, String status, double taxRate,
-                     boolean taxKnown, Double actualReceivedAmount, String note) {
+                     boolean taxKnown, Double actualReceivedAmount, String note, double recordQuantity) {
         ContentValues cv = new ContentValues(); cv.put("holding_id", holdingId); cv.put("account_id", accountId);
         cv.put("amount_per_share", perShare); cv.put("total", total); cv.put("currency", currency);
         cv.put("record_date", recordDate); cv.put("ex_date", exDate); cv.put("pay_date", payDate);
         cv.put("status", status); cv.put("note", note); cv.put("created_at", Instant.now().toString());
         cv.put("tax_rate", taxRate); cv.put("tax_known", taxKnown ? 1 : 0);
+        // Frozen holding quantity at entry time; it backs the "X 股" line for a manual dividend.
+        cv.put("record_quantity", recordQuantity);
         if (actualReceivedAmount != null) cv.put("received_amount", actualReceivedAmount);
         SQLiteDatabase db = getWritableDatabase();
         db.beginTransaction();
@@ -512,24 +528,27 @@ final class LedgerDatabase extends SQLiteOpenHelper {
                               String recordDate, String exDate, String payDate, boolean payDateEstimated,
                               double taxRate, boolean taxKnown, String note) {
         SQLiteDatabase db = getWritableDatabase(); String holdingSourceKey = sourceKey + "|holding=" + holdingId;
-        long existingId = 0; String existingStatus = "expected";
-        try (Cursor c = db.rawQuery("SELECT _id FROM dividends WHERE source_key=?", new String[]{holdingSourceKey})) {
-            if (c.moveToFirst()) existingId = c.getLong(0);
-        }
-        if (existingId != 0) {
-            try (Cursor c = db.rawQuery("SELECT status FROM dividends WHERE _id=?", new String[]{String.valueOf(existingId)})) {
-                if (c.moveToFirst()) existingStatus = c.getString(0);
-            }
-        }
         ContentValues cv = new ContentValues(); cv.put("holding_id", holdingId); cv.put("account_id", accountId);
         cv.put("amount_per_share", perShare); cv.put("total", perShare * recordQuantity); cv.put("currency", currency);
         cv.put("record_date", recordDate); cv.put("ex_date", exDate); cv.put("pay_date", payDate);
-        cv.put("status", existingStatus); cv.put("note", note); cv.put("created_at", Instant.now().toString());
+        cv.put("status", "expected"); cv.put("note", note); cv.put("created_at", Instant.now().toString());
         cv.put("source", "东方财富公开报表"); cv.put("source_key", holdingSourceKey); cv.put("data_class", dataClass);
         cv.put("record_quantity", recordQuantity); cv.put("pay_date_estimated", payDateEstimated ? 1 : 0);
         cv.put("tax_rate", taxRate); cv.put("tax_known", taxKnown ? 1 : 0);
-        if (existingId != 0) return db.update("dividends", cv, "_id=?", new String[]{String.valueOf(existingId)}) > 0;
-        return db.insert("dividends", null, cv) != -1;
+        // Check-then-write must be atomic: two callers seeing "not present" would otherwise both
+        // try to insert and the unique source_key index would silently reject one as -1.
+        db.beginTransaction();
+        try {
+            long existingId = 0;
+            try (Cursor c = db.rawQuery("SELECT _id, status FROM dividends WHERE source_key=?", new String[]{holdingSourceKey})) {
+                if (c.moveToFirst()) { existingId = c.getLong(0); cv.put("status", c.getString(1)); }
+            }
+            boolean ok;
+            if (existingId != 0) ok = db.update("dividends", cv, "_id=?", new String[]{String.valueOf(existingId)}) > 0;
+            else ok = db.insertWithOnConflict("dividends", null, cv, SQLiteDatabase.CONFLICT_IGNORE) != -1;
+            db.setTransactionSuccessful();
+            return ok;
+        } finally { db.endTransaction(); }
     }
 
     double estimatedQuantityAt(long holdingId, String date) {
@@ -728,7 +747,7 @@ final class LedgerDatabase extends SQLiteOpenHelper {
     /** Rewrites one dividend in place. Moving it to another holding rebuilds both. */
     boolean updateDividend(long id, long holdingId, long accountId, double perShare, double total, String currency,
                            String recordDate, String exDate, String payDate, String status, double taxRate,
-                           boolean taxKnown, Double actualReceivedAmount, String note) {
+                           boolean taxKnown, Double actualReceivedAmount, String note, double recordQuantity) {
         if (total < 0 || perShare < 0) return false;
         SQLiteDatabase db = getWritableDatabase(); db.beginTransaction();
         try {
@@ -738,6 +757,7 @@ final class LedgerDatabase extends SQLiteOpenHelper {
             cv.put("amount_per_share", perShare); cv.put("total", total); cv.put("currency", currency);
             cv.put("record_date", recordDate); cv.put("ex_date", exDate); cv.put("pay_date", payDate);
             cv.put("status", status); cv.put("note", note);
+            cv.put("record_quantity", recordQuantity);
             cv.put("tax_rate", taxRate); cv.put("tax_known", taxKnown ? 1 : 0);
             if (actualReceivedAmount == null) cv.putNull("received_amount");
             else cv.put("received_amount", actualReceivedAmount);
@@ -767,16 +787,20 @@ final class LedgerDatabase extends SQLiteOpenHelper {
     }
 
     String exportJson() throws JSONException {
-        SQLiteDatabase db = getReadableDatabase(); JSONObject root = new JSONObject();
-        root.put("app", "穗账"); root.put("schema_version", DB_VERSION); root.put("exported_at", Instant.now().toString());
-        root.put("accounts", rawTable(db, "SELECT * FROM accounts ORDER BY _id"));
-        root.put("holdings", rawTable(db, "SELECT * FROM holdings ORDER BY _id"));
-        root.put("dividends", rawTable(db, "SELECT * FROM dividends ORDER BY _id"));
-        root.put("transactions", rawTable(db, "SELECT * FROM transactions ORDER BY _id"));
-        root.put("expense_goals", rawTable(db, "SELECT * FROM expense_goals ORDER BY _id"));
-        root.put("asset_index", rawTable(db, "SELECT * FROM asset_index ORDER BY _id"));
-        root.put("app_settings", rawTable(db, "SELECT * FROM app_settings ORDER BY key"));
-        return root.toString(2);
+        SQLiteDatabase db = getReadableDatabase();
+        db.beginTransaction();
+        try {
+            JSONObject root = new JSONObject();
+            root.put("app", "穗账"); root.put("schema_version", DB_VERSION); root.put("exported_at", Instant.now().toString());
+            root.put("accounts", rawTable(db, "SELECT * FROM accounts ORDER BY _id"));
+            root.put("holdings", rawTable(db, "SELECT * FROM holdings ORDER BY _id"));
+            root.put("dividends", rawTable(db, "SELECT * FROM dividends ORDER BY _id"));
+            root.put("transactions", rawTable(db, "SELECT * FROM transactions ORDER BY _id"));
+            root.put("expense_goals", rawTable(db, "SELECT * FROM expense_goals ORDER BY _id"));
+            root.put("asset_index", rawTable(db, "SELECT * FROM asset_index ORDER BY _id"));
+            root.put("app_settings", rawTable(db, "SELECT * FROM app_settings ORDER BY key"));
+            return root.toString(2);
+        } finally { db.endTransaction(); }
     }
 
     /** Full replacement is validated before opening a transaction; invalid JSON never touches live rows. */
@@ -817,7 +841,7 @@ final class LedgerDatabase extends SQLiteOpenHelper {
             }
             if (version < 2) { seedTaxDefaults(db); seedAssetIndex(db); }
             if (version < 3) {
-                db.execSQL("UPDATE holdings SET opened_on=substr(created_at,1,10), initial_quantity=MAX(0, quantity-COALESCE((SELECT SUM(CASE WHEN t.side='买入' THEN t.quantity ELSE -t.quantity END) FROM transactions t WHERE t.holding_id=holdings._id),0)), tax_mode='manual'");
+                db.execSQL("UPDATE holdings SET opened_on=date(created_at,'localtime'), initial_quantity=MAX(0, quantity-COALESCE((SELECT SUM(CASE WHEN t.side='买入' THEN t.quantity ELSE -t.quantity END) FROM transactions t WHERE t.holding_id=holdings._id),0)), tax_mode='manual'");
                 db.execSQL("UPDATE dividends SET tax_rate=COALESCE((SELECT tax_rate FROM holdings WHERE holdings._id=dividends.holding_id),0), tax_known=1");
             }
             if (accounts.length() == 0) {
@@ -911,12 +935,35 @@ final class LedgerDatabase extends SQLiteOpenHelper {
         return out;
     }
     private void requireObject(JSONObject row, String kind) throws JSONException { if (row == null) throw new JSONException(kind + "记录不是对象"); }
+    private static final java.util.Map<String, java.util.Set<String>> KNOWN_COLUMNS;
+    static {
+        KNOWN_COLUMNS = new java.util.HashMap<>();
+        KNOWN_COLUMNS.put("accounts", setOf("_id", "name", "created_at"));
+        KNOWN_COLUMNS.put("holdings", setOf("_id", "name", "code", "market", "currency", "quantity",
+                "cost", "account_id", "created_at", "annual_dividend_per_unit", "tax_rate",
+                "opened_on", "initial_quantity", "tax_mode", "cost_method", "opening_cost"));
+        KNOWN_COLUMNS.put("dividends", setOf("_id", "holding_id", "account_id", "amount_per_share",
+                "total", "currency", "record_date", "ex_date", "pay_date", "status", "note",
+                "created_at", "source", "source_key", "data_class", "record_quantity",
+                "pay_date_estimated", "tax_rate", "tax_known", "received_amount"));
+        KNOWN_COLUMNS.put("transactions", setOf("_id", "holding_id", "account_id", "side",
+                "trade_date", "quantity", "price", "fees", "note", "created_at"));
+        KNOWN_COLUMNS.put("expense_goals", setOf("_id", "name", "period", "amount", "currency", "created_at"));
+        KNOWN_COLUMNS.put("asset_index", setOf("_id", "code", "name", "market"));
+        KNOWN_COLUMNS.put("app_settings", setOf("key", "value"));
+    }
+    private static java.util.Set<String> setOf(String... cols) {
+        return new java.util.HashSet<>(java.util.Arrays.asList(cols));
+    }
     private void insertRows(SQLiteDatabase db, String table, JSONArray rows) throws JSONException {
+        java.util.Set<String> columns = KNOWN_COLUMNS.get(table);
+        if (columns == null) throw new JSONException("备份含未知表：" + table);
         for (int i = 0; i < rows.length(); i++) {
             JSONObject row = rows.getJSONObject(i); ContentValues cv = new ContentValues();
             java.util.Iterator<String> keys = row.keys();
             while (keys.hasNext()) {
                 String key = keys.next();
+                if (!columns.contains(key)) throw new JSONException("备份含未知字段：" + table + "." + key);
                 Object value = row.get(key); if (value == JSONObject.NULL) cv.putNull(key);
                 else if (value instanceof String) cv.put(key, (String) value);
                 else if (value instanceof Integer || value instanceof Long) cv.put(key, ((Number) value).longValue());

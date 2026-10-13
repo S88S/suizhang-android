@@ -28,9 +28,10 @@
 # inflated in places; keeping their two-attribute ctor avoids surprises.
 -keep public class himiuix.** { public <init>(android.content.Context, android.util.AttributeSet); }
 
-# org.json is used throughout instead of generated models. Field names are
-# part of the on-disk backup format, so restore must keep matching getters.
--keepclassmembers class org.json.** { *; }
+# org.json ships with the Android runtime (android.jar), so R8 never strips its
+# classes and a -keepclassmembers rule for org.json.** is a no-op. The on-disk
+# backup format relies on JSON *keys* that are string literals in code, not on
+# reflection over org.json types, so nothing here needs to be preserved for it.
 
 # Keep line numbers so a release crash report is still readable, but hide the
 # original source file name.

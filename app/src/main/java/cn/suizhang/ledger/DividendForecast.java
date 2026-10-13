@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 
 /** Pure, auditable historical dividend estimate logic shared by the form and regression tests. */
 final class DividendForecast {
-    private static final Pattern YEAR = Pattern.compile("(?:19|20)\\d{2}");
+    private static final Pattern YEAR = Pattern.compile("\\d{4}");
 
     private DividendForecast() { }
 
@@ -77,8 +77,15 @@ final class DividendForecast {
         if (period == null) return -1;
         Matcher matcher = YEAR.matcher(period);
         if (!matcher.find()) return -1;
-        try { return Integer.parseInt(matcher.group()); }
-        catch (NumberFormatException ignored) { return -1; }
+        try {
+            int year = Integer.parseInt(matcher.group());
+            // Reject implausible values (e.g. a stray 4-digit number that is not a year, or a
+            // far-future year from malformed input). The 1900 lower bound also catches the old
+            // "(?:19|20)\d{2}" assumption that silently ignored 2100 and beyond.
+            int currentYear = java.time.Year.now().getValue();
+            if (year < 1900 || year > currentYear + 1) return -1;
+            return year;
+        } catch (NumberFormatException ignored) { return -1; }
     }
 
     /** Returns NaN instead of a misleading zero until both history and a positive quantity exist. */

@@ -66,6 +66,19 @@ public class DividendForecastJUnitTest {
         assertTrue("只接受 1/3/5 年口径", expectInvalidWindow());
     }
 
+    @Test public void extractYearRejectsOutOfRangeYears() {
+        // M12 fix: the old (?:19|20)\d{2} pattern silently ignored 2100 and beyond, and accepted
+        // stray 4-digit numbers. The 4-digit match now validates the year against a sane range.
+        int current = java.time.Year.now().getValue();
+        assertEquals("正常报告年度被识别", 2023, DividendForecast.extractYear("2023年度"));
+        assertEquals("中期报告年度被识别", 2024, DividendForecast.extractYear("2024中期"));
+        assertEquals("当前年度在范围内", current, DividendForecast.extractYear(current + "年度"));
+        assertEquals("年份低于 1900 被拒", -1, DividendForecast.extractYear("1899年度"));
+        assertEquals("未来年份超出范围被拒", -1, DividendForecast.extractYear("2100年度"));
+        assertEquals("无年份的文本被拒", -1, DividendForecast.extractYear("未提供期间"));
+        assertEquals("夹杂的 4 位数字被拒", -1, DividendForecast.extractYear("AB12CD34"));
+    }
+
     private static boolean expectInvalidWindow() {
         try { DividendForecast.calculate(Collections.emptyList(), 2, 2026); }
         catch (IllegalArgumentException expected) { return true; }

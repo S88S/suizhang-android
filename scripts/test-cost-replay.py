@@ -244,4 +244,24 @@ conn.commit()
 require("已到账但未填金额的分红不参与重算", len(conn.execute(dividend_query.group(1), ("1",)).fetchall()) == 0)
 conn.close()
 
+# --- R1: the business date must come from the UTC timestamp in local time, never a truncation ---
+require("建仓日由本地时区换算而不是截断 UTC 时间戳",
+        "date(created_at,'localtime')" in database and "substr(created_at" not in database)
+
+from datetime import datetime as _dt
+
+
+def _local_date_of(ts):
+    return _dt.fromisoformat(ts.replace("Z", "+00:00")).astimezone().date().isoformat()
+
+
+_tz_conn = sqlite3.connect(":memory:")
+# A holding created late at night UTC must land on the correct local calendar day, which a bare
+# substr(created_at,1,10) would push back by the local offset's worth of hours.
+for _ts in ("2025-05-01T23:30:00Z", "2025-05-01T02:00:00Z", "2025-12-31T21:00:00Z"):
+    _expected = _local_date_of(_ts)
+    _got = _tz_conn.execute("SELECT date(?, 'localtime')", (_ts,)).fetchone()[0]
+    require("UTC 时间戳 " + _ts + " 在本地时区换算为 " + _expected, _got == _expected)
+_tz_conn.close()
+
 print("通过：成本重算的数据流与编辑入口回归；SQL 取自源码，成本公式由 CostReplayTest 用真实代码覆盖。")
