@@ -25,7 +25,7 @@ final class LedgerDatabase extends SQLiteOpenHelper {
     private static final String DB_NAME = "suizhang-ledger.db";
     // Package-private, not private: ExcelBackup stamps this into every workbook it writes. Keeping
     // one source stops a future schema bump from being silently dropped on import.
-    static final int DB_VERSION = 4;
+    static final int DB_VERSION = 5;
 
     LedgerDatabase(Context context) {
         super(context, DB_NAME, null, DB_VERSION);
@@ -71,7 +71,7 @@ final class LedgerDatabase extends SQLiteOpenHelper {
 
     private void createCore(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE accounts (_id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, created_at TEXT NOT NULL)");
-        db.execSQL("CREATE TABLE holdings (_id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, code TEXT, market TEXT NOT NULL, currency TEXT NOT NULL, quantity REAL NOT NULL, cost REAL NOT NULL, account_id INTEGER NOT NULL, created_at TEXT NOT NULL, annual_dividend_per_unit REAL NOT NULL DEFAULT 0, tax_rate REAL NOT NULL DEFAULT 0.10, opened_on TEXT NOT NULL DEFAULT '', initial_quantity REAL NOT NULL DEFAULT 0, tax_mode TEXT NOT NULL DEFAULT 'manual', cost_method TEXT NOT NULL DEFAULT 'weighted_average')");
+        db.execSQL("CREATE TABLE holdings (_id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, code TEXT, market TEXT NOT NULL, currency TEXT NOT NULL, quantity REAL NOT NULL, cost REAL NOT NULL, account_id INTEGER NOT NULL, created_at TEXT NOT NULL, annual_dividend_per_unit REAL NOT NULL DEFAULT 0, tax_rate REAL NOT NULL DEFAULT 0.10, opened_on TEXT NOT NULL DEFAULT '', initial_quantity REAL NOT NULL DEFAULT 0, tax_mode TEXT NOT NULL DEFAULT 'manual', cost_method TEXT NOT NULL DEFAULT 'weighted_average', opening_cost REAL NOT NULL DEFAULT 0)");
         db.execSQL("CREATE TABLE dividends (_id INTEGER PRIMARY KEY AUTOINCREMENT, holding_id INTEGER NOT NULL, account_id INTEGER NOT NULL, amount_per_share REAL NOT NULL, total REAL NOT NULL, currency TEXT NOT NULL, record_date TEXT, ex_date TEXT, pay_date TEXT NOT NULL, status TEXT NOT NULL, note TEXT, created_at TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'manual', source_key TEXT, data_class TEXT NOT NULL DEFAULT 'manual', record_quantity REAL NOT NULL DEFAULT 0, pay_date_estimated INTEGER NOT NULL DEFAULT 0, tax_rate REAL NOT NULL DEFAULT 0, tax_known INTEGER NOT NULL DEFAULT 0, received_amount REAL)");
         db.execSQL("CREATE TABLE transactions (_id INTEGER PRIMARY KEY AUTOINCREMENT, holding_id INTEGER NOT NULL, account_id INTEGER NOT NULL, side TEXT NOT NULL, trade_date TEXT NOT NULL, quantity REAL NOT NULL, price REAL NOT NULL, fees REAL NOT NULL, note TEXT, created_at TEXT NOT NULL)");
         db.execSQL("CREATE INDEX idx_dividends_paydate ON dividends(pay_date)");
@@ -162,7 +162,123 @@ final class LedgerDatabase extends SQLiteOpenHelper {
             db.execSQL("ALTER TABLE holdings ADD COLUMN cost_method TEXT NOT NULL DEFAULT 'weighted_average'");
             db.execSQL("ALTER TABLE dividends ADD COLUMN received_amount REAL");
         }
+        if (oldVersion < 5) {
+            // Schema 5 lets a trade or dividend be edited or deleted, which means the stored unit
+            // cost can no longer be the only record of how it was reached: it has to be
+            // recomputable. opening_cost is the unit cost the replay starts from. It is derived
+            // here by walking each holding's history backwards from the cost it already holds, so
+            // no existing position changes by a single cent - see CostReplay.recoverOpening.
+            db.execSQL("ALTER TABLE holdings ADD COLUMN opening_cost REAL NOT NULL DEFAULT 0");
+            backfillOpeningCost(db);
+        }
     }
+
+    /**
+     * Fills opening_cost for every holding from its current numbers.
+     *
+     * <p>Called from the schema 5 migration, where opening_cost does not exist yet and the only
+     * truth available is the incrementally maintained (quantity, cost) pair. A holding whose
+     * history cannot be walked back - one that was closed out at some point - lands on an opening
+     * of zero, which replays to exactly the numbers it already has.
+     */
+    private void backfillOpeningCost(SQLiteDatabase db) {
+        List<Long> ids = new ArrayList<>();
+        try (Cursor c = db.rawQuery("SELECT _id FROM holdings", null)) {
+            while (c.moveToNext()) ids.add(c.getLong(0));
+        }
+        for (Long id : ids) syncOpeningCost(db, id);
+    }
+
+    /**
+     * Re-derives opening_cost so that replaying the holding's history lands on the (quantity,
+     * cost) it holds right now.
+     *
+     * <p>Needed whenever something sets the unit cost without going through the replay: the
+     * holding editor lets the user type a cost directly, and that typed value has to become the
+     * replay's result rather than be overwritten by the next rebuild.
+     */
+    private void syncOpeningCost(SQLiteDatabase db, long holdingId) {
+        if (holdingId <= 0) return;
+        double quantity, cost; String method;
+        try (Cursor c = db.rawQuery("SELECT quantity,cost,cost_method FROM holdings WHERE _id=?",
+                new String[]{String.valueOf(holdingId)})) {
+            if (!c.moveToFirst()) return;
+            quantity = c.getDouble(0); cost = c.getDouble(1); method = c.getString(2);
+        }
+        if (method == null || method.isEmpty()) method = FinanceMath.COST_WEIGHTED_AVERAGE;
+        CostReplay.State opening = CostReplay.recoverOpening(
+                new CostReplay.State(Math.max(0d, quantity), cost), method, replayEvents(db, holdingId));
+        ContentValues cv = new ContentValues();
+        cv.put("opening_cost", Double.isFinite(opening.cost) ? opening.cost : 0d);
+        db.update("holdings", cv, "_id=?", new String[]{String.valueOf(holdingId)});
+    }
+
+    /**
+     * Recomputes quantity and unit cost by replaying the holding's whole history.
+     *
+     * <p>This is what makes editing and deleting safe: rather than trying to undo one incremental
+     * step, it starts from the opening checkpoint and re-applies everything that is left. Any
+     * edit, in any position, ends up consistent by construction.
+     */
+    private void rebuildHolding(SQLiteDatabase db, long holdingId) {
+        if (holdingId <= 0) return;
+        double openingQuantity, openingCost; String method;
+        try (Cursor c = db.rawQuery("SELECT initial_quantity,opening_cost,cost_method FROM holdings WHERE _id=?",
+                new String[]{String.valueOf(holdingId)})) {
+            if (!c.moveToFirst()) return;
+            openingQuantity = c.getDouble(0); openingCost = c.getDouble(1); method = c.getString(2);
+        }
+        if (method == null || method.isEmpty()) method = FinanceMath.COST_WEIGHTED_AVERAGE;
+        CostReplay.State end = CostReplay.replay(
+                new CostReplay.State(Math.max(0d, openingQuantity), openingCost), method, replayEvents(db, holdingId));
+        ContentValues cv = new ContentValues();
+        cv.put("quantity", Math.max(0d, end.quantity));
+        cv.put("cost", Double.isFinite(end.cost) ? end.cost : 0d);
+        db.update("holdings", cv, "_id=?", new String[]{String.valueOf(holdingId)});
+    }
+
+    /**
+     * Every trade and every received dividend for a holding, ordered by date then id.
+     *
+     * <p>Received dividends are included because the dividend-adjusted basis deducts them from
+     * the cost, so a rebuild that only looked at trades would put back basis the dividend removed.
+     * Their ordering key is pay_date, the date the money actually arrived; a dividend still only
+     * expected has not moved the cost and is left out.
+     */
+    private List<CostReplay.Event> replayEvents(SQLiteDatabase db, long holdingId) {
+        List<CostReplay.Event> events = new ArrayList<>();
+        String id = String.valueOf(holdingId);
+        try (Cursor c = db.rawQuery("SELECT _id,side,trade_date,quantity,price,fees FROM transactions WHERE holding_id=? ORDER BY trade_date,_id",
+                new String[]{id})) {
+            while (c.moveToNext()) {
+                events.add(new CostReplay.Event(c.getString(2), c.getLong(0), c.getString(1),
+                        c.getDouble(3), c.getDouble(4), c.getDouble(5), 0d));
+            }
+        }
+        // received_amount IS NOT NULL, not COALESCE(received_amount,total): markDividendReceived
+        // only dilutes the cost when an actual amount was entered, so a received dividend with no
+        // amount has never moved the cost and must not start moving it now.
+        try (Cursor c = db.rawQuery("SELECT _id,pay_date,received_amount FROM dividends WHERE holding_id=? AND status='received' AND received_amount IS NOT NULL ORDER BY pay_date,_id",
+                new String[]{id})) {
+            while (c.moveToNext()) {
+                double receipt = c.getDouble(2);
+                if (!Double.isFinite(receipt) || receipt <= 0d) continue;
+                events.add(new CostReplay.Event(c.getString(1), c.getLong(0), "分红", 0d, 0d, 0d, receipt));
+            }
+        }
+        // Trades before dividends on the same day: the money arrives after the day's trading. The
+        // order has to be total and stable, because recoverOpening walks the same list backwards
+        // and any tie broken differently would recover a different opening cost.
+        events.sort((a, b) -> {
+            int byDate = a.date == null ? (b.date == null ? 0 : 1) : (b.date == null ? -1 : a.date.compareTo(b.date));
+            if (byDate != 0) return byDate;
+            int byKind = Integer.compare(dividendRank(a), dividendRank(b));
+            return byKind != 0 ? byKind : Long.compare(a.id, b.id);
+        });
+        return events;
+    }
+
+    private static int dividendRank(CostReplay.Event e) { return "分红".equals(e.kind) ? 1 : 0; }
 
     JSONArray accounts() { return query("SELECT _id,name,created_at FROM accounts ORDER BY _id", null); }
     JSONArray holdings(long accountId) {
@@ -203,10 +319,28 @@ final class LedgerDatabase extends SQLiteOpenHelper {
         if (accountId > 0) return query(sql + " AND d.account_id=? ORDER BY d.pay_date", new String[]{today, String.valueOf(accountId)});
         return query(sql + " ORDER BY d.pay_date", new String[]{today});
     }
-    JSONArray transactions(long accountId, int limit) {
-        String sql = "SELECT t.*,h.name AS holding_name,h.code AS holding_code FROM transactions t JOIN holdings h ON h._id=t.holding_id";
+    JSONArray transactions(long accountId, int limit) { return transactions(accountId, limit, 0L); }
+
+    /**
+     * The trade list, or exactly one row when {@code onlyId} is given.
+     *
+     * <p>The single-row form exists for the editor: the list is capped at the most recent trades,
+     * so a row that has scrolled off the end would otherwise be impossible to open.
+     */
+    JSONArray transactions(long accountId, int limit, long onlyId) {
+        String sql = "SELECT t.*,h.name AS holding_name,h.code AS holding_code FROM transactions t JOIN holdings h ON h._id=t.holding_id WHERE t._id=?";
+        if (onlyId > 0) return query(sql, new String[]{String.valueOf(onlyId)});
+        sql = "SELECT t.*,h.name AS holding_name,h.code AS holding_code FROM transactions t JOIN holdings h ON h._id=t.holding_id";
         if (accountId > 0) return query(sql + " WHERE t.account_id=? ORDER BY t.trade_date DESC,t._id DESC LIMIT " + Math.max(1, limit), new String[]{String.valueOf(accountId)});
         return query(sql + " ORDER BY t.trade_date DESC,t._id DESC LIMIT " + Math.max(1, limit), null);
+    }
+
+    /** One dividend with the holding fields the editor and the tax estimate both need. */
+    JSONObject dividendRow(long id) {
+        JSONArray rows = query("SELECT d.*,h.name AS holding_name,h.code AS holding_code,h.market AS holding_market,"
+                + "h.tax_mode AS holding_tax_mode,h.tax_rate AS holding_tax_rate,h.quantity AS holding_quantity"
+                + " FROM dividends d JOIN holdings h ON h._id=d.holding_id WHERE d._id=?", new String[]{String.valueOf(id)});
+        return rows.length() == 0 ? null : rows.optJSONObject(0);
     }
     JSONArray netInvestedByCurrency(long accountId) {
         String sql = "SELECT h.currency AS currency,COALESCE(SUM(CASE WHEN t.side='买入' THEN t.quantity*t.price+t.fees WHEN t.side='卖出' THEN -(t.quantity*t.price-t.fees) ELSE 0 END),0) AS total FROM transactions t JOIN holdings h ON h._id=t.holding_id";
@@ -250,6 +384,9 @@ final class LedgerDatabase extends SQLiteOpenHelper {
         if (id == 0) {
             cv.put("created_at", Instant.now().toString());
             cv.put("initial_quantity", quantity);
+            // No trades yet, so the whole position is the opening checkpoint: the typed cost is
+            // the cost the replay starts from, and it must survive every later rebuild.
+            cv.put("opening_cost", Double.isFinite(cost) ? cost : 0d);
             SQLiteDatabase db = getWritableDatabase();
             db.beginTransaction();
             try {
@@ -267,6 +404,10 @@ final class LedgerDatabase extends SQLiteOpenHelper {
             }
             cv.put("initial_quantity", Math.max(0d, quantity - txNet));
             db.update("holdings", cv, "_id=?", new String[]{String.valueOf(id)});
+            // The editor lets the cost be typed directly, which no trade would justify. Recovering
+            // the opening from the stored result makes the typed value the number a rebuild
+            // reproduces, instead of something the next rebuild overwrites.
+            syncOpeningCost(db, id);
             ContentValues reassigned = new ContentValues(); reassigned.put("account_id", accountId);
             db.update("dividends", reassigned, "holding_id=?", new String[]{String.valueOf(id)});
             db.update("transactions", reassigned, "holding_id=?", new String[]{String.valueOf(id)});
@@ -297,9 +438,9 @@ final class LedgerDatabase extends SQLiteOpenHelper {
         SQLiteDatabase db = getWritableDatabase();
         db.beginTransaction();
         try {
-            long holdingId = 0; boolean hadAmount = false; double oldAmount = 0d;
-            try (Cursor c = db.rawQuery("SELECT holding_id,received_amount FROM dividends WHERE _id=?", new String[]{String.valueOf(id)})) {
-                if (!c.moveToFirst()) return; holdingId = c.getLong(0); hadAmount = !c.isNull(1); if (hadAmount) oldAmount = c.getDouble(1);
+            long holdingId = 0;
+            try (Cursor c = db.rawQuery("SELECT holding_id FROM dividends WHERE _id=?", new String[]{String.valueOf(id)})) {
+                if (!c.moveToFirst()) return; holdingId = c.getLong(0);
             }
             ContentValues cv = new ContentValues(); cv.put("status", "received");
             if (actualReceivedAmount != null) {
@@ -307,16 +448,19 @@ final class LedgerDatabase extends SQLiteOpenHelper {
                 cv.put("received_amount", actualReceivedAmount);
             }
             db.update("dividends", cv, "_id=?", new String[]{String.valueOf(id)});
-            if (actualReceivedAmount != null) adjustCostForDividend(db, holdingId, actualReceivedAmount - (hadAmount ? oldAmount : 0d));
+            // Rebuilt rather than decremented by the difference. Entering an amount, correcting it
+            // and deleting the dividend all change the same basis, and one shared replay keeps
+            // them consistent instead of each maintaining its own arithmetic.
+            rebuildHolding(db, holdingId);
             db.setTransactionSuccessful();
         } finally { db.endTransaction(); }
     }
 /**
      * Marks every listed dividend as received in one transaction, leaving received_amount null.
      *
-     * <p>Deliberately does not write a received amount: markDividendReceived feeds the amount into
-     * adjustCostForDividend, so filling it in would silently rewrite holding cost. A batch action
-     * that the user cannot itemise should not move money. Amounts stay editable one by one.
+     * <p>Deliberately does not write a received amount: an actual amount is what dilutes the cost
+     * basis, so filling one in here would silently rewrite holding cost. A batch action that the
+     * user cannot itemise should not move money. Amounts stay editable one by one.
      *
      * <p>Only rows still in 'expected' are touched, so a cancelled or already-received dividend is
      * left alone and the method stays idempotent across repeated calls and duplicate ids.
@@ -357,22 +501,10 @@ final class LedgerDatabase extends SQLiteOpenHelper {
         db.beginTransaction();
         try {
             long id = db.insertOrThrow("dividends", null, cv);
-            if ("received".equals(status) && actualReceivedAmount != null) adjustCostForDividend(db, holdingId, actualReceivedAmount);
+            rebuildHolding(db, holdingId);
             db.setTransactionSuccessful();
             return id;
         } finally { db.endTransaction(); }
-    }
-
-    private void adjustCostForDividend(SQLiteDatabase db, long holdingId, double actualNetAmount) {
-        if (actualNetAmount == 0d) return;
-        try (Cursor c = db.rawQuery("SELECT quantity,cost,cost_method FROM holdings WHERE _id=?", new String[]{String.valueOf(holdingId)})) {
-            if (!c.moveToFirst() || !FinanceMath.COST_DIVIDEND_ADJUSTED.equals(c.getString(2))) return;
-            double quantity = c.getDouble(0), cost = c.getDouble(1);
-            if (quantity <= 0d) return;
-            ContentValues update = new ContentValues();
-            update.put("cost", FinanceMath.costAfterReceivedDividend(FinanceMath.COST_DIVIDEND_ADJUSTED, quantity, cost, actualNetAmount));
-            db.update("holdings", update, "_id=?", new String[]{String.valueOf(holdingId)});
-        }
     }
 
     boolean addPublicDividend(long holdingId, long accountId, String code, String sourceKey,
@@ -514,25 +646,104 @@ final class LedgerDatabase extends SQLiteOpenHelper {
         if (quantity <= 0 || price < 0 || fees < 0 || !("买入".equals(side) || "卖出".equals(side))) return false;
         SQLiteDatabase db = getWritableDatabase(); db.beginTransaction();
         try {
-            double oldQty, oldCost; String costMethod;
-            try (Cursor c = db.rawQuery("SELECT quantity,cost,cost_method FROM holdings WHERE _id=?", new String[]{String.valueOf(holdingId)})) {
-                if (!c.moveToFirst()) return false; oldQty = c.getDouble(0); oldCost = c.getDouble(1); costMethod = c.getString(2);
-            }
-            double newQty, newCost = oldCost;
-            if ("买入".equals(side)) {
-                newQty = oldQty + quantity;
-                newCost = FinanceMath.costAfterBuy(costMethod, oldQty, oldCost, quantity, price, fees);
-            } else {
-                if (quantity > oldQty + 1e-8) return false;
-                newQty = FinanceMath.sellQuantity(oldQty, quantity);
-                newCost = FinanceMath.costAfterSell(costMethod, oldQty, oldCost, quantity, price, fees);
+            // Overselling is still rejected against the position as it stands. The replay cannot
+            // be used to judge this before the row exists, and a sale that ends up larger than
+            // what is held is a data-entry mistake rather than something to clamp silently.
+            try (Cursor c = db.rawQuery("SELECT quantity FROM holdings WHERE _id=?", new String[]{String.valueOf(holdingId)})) {
+                if (!c.moveToFirst()) return false;
+                if ("卖出".equals(side) && quantity > c.getDouble(0) + 1e-8) return false;
             }
             ContentValues cv = new ContentValues(); cv.put("holding_id", holdingId); cv.put("account_id", accountId);
             cv.put("side", side); cv.put("trade_date", tradeDate); cv.put("quantity", quantity);
             cv.put("price", price); cv.put("fees", fees); cv.put("note", note); cv.put("created_at", Instant.now().toString());
             db.insertOrThrow("transactions", null, cv);
-            ContentValues update = new ContentValues(); update.put("quantity", newQty); update.put("cost", newCost);
-            db.update("holdings", update, "_id=?", new String[]{String.valueOf(holdingId)});
+            // Recomputed rather than applied on top: an incremental step is only right for a trade
+            // appended at the end, and the editor can now insert one in the middle.
+            rebuildHolding(db, holdingId);
+            db.setTransactionSuccessful(); return true;
+        } catch (IllegalArgumentException e) { return false; }
+        finally { db.endTransaction(); }
+    }
+
+    /** The holding a trade row belongs to, or 0 when the row is gone. */
+    private long holdingOf(SQLiteDatabase db, String table, long id) {
+        try (Cursor c = db.rawQuery("SELECT holding_id FROM " + table + " WHERE _id=?", new String[]{String.valueOf(id)})) {
+            return c.moveToFirst() ? c.getLong(0) : 0L;
+        }
+    }
+
+    /**
+     * Deletes one trade and recomputes the holding from what is left.
+     *
+     * <p>Deleting a buy that later sales depended on can leave the remaining history unable to
+     * cover them. The replay clamps those sales to what was actually held and the position ends
+     * at zero rather than negative, which is the honest reading of an inconsistent ledger.
+     */
+    boolean deleteTransaction(long id) {
+        SQLiteDatabase db = getWritableDatabase(); db.beginTransaction();
+        try {
+            long holdingId = holdingOf(db, "transactions", id);
+            if (holdingId <= 0 || db.delete("transactions", "_id=?", new String[]{String.valueOf(id)}) <= 0) return false;
+            rebuildHolding(db, holdingId);
+            db.setTransactionSuccessful(); return true;
+        } finally { db.endTransaction(); }
+    }
+
+    /** Rewrites one trade in place. Moving it to another holding rebuilds both. */
+    boolean updateTransaction(long id, long holdingId, long accountId, String side, String tradeDate,
+                              double quantity, double price, double fees, String note) {
+        if (quantity <= 0 || price < 0 || fees < 0 || !("买入".equals(side) || "卖出".equals(side))) return false;
+        SQLiteDatabase db = getWritableDatabase(); db.beginTransaction();
+        try {
+            long previousHolding = holdingOf(db, "transactions", id);
+            if (previousHolding <= 0) return false;
+            ContentValues cv = new ContentValues(); cv.put("holding_id", holdingId); cv.put("account_id", accountId);
+            cv.put("side", side); cv.put("trade_date", tradeDate); cv.put("quantity", quantity);
+            cv.put("price", price); cv.put("fees", fees); cv.put("note", note);
+            if (db.update("transactions", cv, "_id=?", new String[]{String.valueOf(id)}) <= 0) return false;
+            rebuildHolding(db, holdingId);
+            if (previousHolding != holdingId) rebuildHolding(db, previousHolding);
+            db.setTransactionSuccessful(); return true;
+        } catch (IllegalArgumentException e) { return false; }
+        finally { db.endTransaction(); }
+    }
+
+    /**
+     * Deletes one dividend and rebuilds the holding.
+     *
+     * <p>A received dividend under the dividend-adjusted basis has already been deducted from the
+     * cost, so removing it has to put that basis back. The rebuild does this as a side effect of
+     * replaying what remains, rather than by trying to reverse one deduction.
+     */
+    boolean deleteDividend(long id) {
+        SQLiteDatabase db = getWritableDatabase(); db.beginTransaction();
+        try {
+            long holdingId = holdingOf(db, "dividends", id);
+            if (holdingId <= 0 || db.delete("dividends", "_id=?", new String[]{String.valueOf(id)}) <= 0) return false;
+            rebuildHolding(db, holdingId);
+            db.setTransactionSuccessful(); return true;
+        } finally { db.endTransaction(); }
+    }
+
+    /** Rewrites one dividend in place. Moving it to another holding rebuilds both. */
+    boolean updateDividend(long id, long holdingId, long accountId, double perShare, double total, String currency,
+                           String recordDate, String exDate, String payDate, String status, double taxRate,
+                           boolean taxKnown, Double actualReceivedAmount, String note) {
+        if (total < 0 || perShare < 0) return false;
+        SQLiteDatabase db = getWritableDatabase(); db.beginTransaction();
+        try {
+            long previousHolding = holdingOf(db, "dividends", id);
+            if (previousHolding <= 0) return false;
+            ContentValues cv = new ContentValues(); cv.put("holding_id", holdingId); cv.put("account_id", accountId);
+            cv.put("amount_per_share", perShare); cv.put("total", total); cv.put("currency", currency);
+            cv.put("record_date", recordDate); cv.put("ex_date", exDate); cv.put("pay_date", payDate);
+            cv.put("status", status); cv.put("note", note);
+            cv.put("tax_rate", taxRate); cv.put("tax_known", taxKnown ? 1 : 0);
+            if (actualReceivedAmount == null) cv.putNull("received_amount");
+            else cv.put("received_amount", actualReceivedAmount);
+            if (db.update("dividends", cv, "_id=?", new String[]{String.valueOf(id)}) <= 0) return false;
+            rebuildHolding(db, holdingId);
+            if (previousHolding != holdingId) rebuildHolding(db, previousHolding);
             db.setTransactionSuccessful(); return true;
         } catch (IllegalArgumentException e) { return false; }
         finally { db.endTransaction(); }
@@ -598,6 +809,12 @@ final class LedgerDatabase extends SQLiteOpenHelper {
             insertRows(db, "accounts", accounts); insertRows(db, "holdings", holdings);
             insertRows(db, "dividends", dividends); insertRows(db, "transactions", transactions);
             insertRows(db, "expense_goals", goals); insertRows(db, "asset_index", index); insertRows(db, "app_settings", settings);
+            if (version < 5) {
+                // Workbooks written before schema 5 have no opening_cost column, so every holding
+                // lands on 0 and a rebuild would start the position from nothing. Deriving it from
+                // the imported quantity and cost is the same recovery the migration performs.
+                backfillOpeningCost(db);
+            }
             if (version < 2) { seedTaxDefaults(db); seedAssetIndex(db); }
             if (version < 3) {
                 db.execSQL("UPDATE holdings SET opened_on=substr(created_at,1,10), initial_quantity=MAX(0, quantity-COALESCE((SELECT SUM(CASE WHEN t.side='买入' THEN t.quantity ELSE -t.quantity END) FROM transactions t WHERE t.holding_id=holdings._id),0)), tax_mode='manual'");

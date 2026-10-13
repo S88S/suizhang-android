@@ -851,8 +851,8 @@ private void showHome() {
     }
     private void holdingMenu(JSONObject h) {
         new MaterialAlertDialogBuilder(this).setTitle(h.optString("name")).setItems(new String[]{"记分红", "记交易", "编辑持仓", "删除持仓及关联流水"}, (d, which) -> {
-            if (which == 0) showDividendDialog(h.optLong("_id"));
-            else if (which == 1) showTransactionDialog(h.optLong("_id"));
+            if (which == 0) showDividendDialog(h.optLong("_id"), 0);
+            else if (which == 1) showTransactionDialog(h.optLong("_id"), 0);
             else if (which == 2) new Handler(Looper.getMainLooper()).post(() -> showHoldingEditor(h, null));
             else new MaterialAlertDialogBuilder(this).setTitle("删除这项持仓？").setMessage("会同时删除分红与交易记录，且无法撤销。建议先导出备份。")
                     .setNegativeButton("取消", null).setPositiveButton("删除", (x, y) -> { db.deleteHolding(h.optLong("_id")); render(); toast("已删除"); }).show();
@@ -1265,6 +1265,11 @@ private void showHome() {
         content.addView(item, margin(0, 4, 0, 4));
         if (allowMarkReceived && !received) { content.addView(actionButton("确认已到账", false, () -> confirmMarkReceived(e)), margin(62, 0, 0, 7)); }
         else if (allowMarkReceived && received && !actualKnown) { content.addView(actionButton("补录实际到账金额", false, () -> confirmMarkReceived(e)), margin(62, 0, 0, 7)); }
+        // Offered wherever a dividend is shown, not only in one list: it is the same stored row in
+        // the calendar, on the holding and in the upcoming view, and a wrong one can only be
+        // corrected from wherever the user happens to notice it.
+        content.addView(editDeleteRow(() -> showDividendDialog(0, e.optLong("_id")),
+                () -> confirmDeleteDividend(e)), margin(62, 0, 0, 7));
     }
     private void confirmMarkReceived(JSONObject e) {
         boolean alreadyReceived = "received".equals(e.optString("status"));
@@ -1575,11 +1580,16 @@ private void showHome() {
         } catch (Exception e) { return "无法读取许可文件：" + path; }
     }
     private void showTransactions() {
-        sectionHeader("最近交易流水", "新增交易", () -> showTransactionDialog(0)); JSONArray transactions = db.transactions(selectedAccount, 25);
+        sectionHeader("最近交易流水", "新增交易", () -> showTransactionDialog(0, 0)); JSONArray transactions = db.transactions(selectedAccount, 25);
         if (transactions.length() == 0) content.addView(text("还没有交易记录。买入/卖出会重算加权成本，并用于 A 股持有期税率估算。", 11, MUTED, false), margin(1, 0, 0, 6));
-        for (int i = 0; i < transactions.length(); i++) { JSONObject t = transactions.optJSONObject(i); CardColumn item = card(); item.setOrientation(LinearLayout.HORIZONTAL); item.setGravity(Gravity.CENTER_VERTICAL);
-            item.addView(text(t.optString("side"), 12, INK, true), new LinearLayout.LayoutParams(dp(42), -2));
-            item.addView(text(t.optString("holding_name") + " · " + shortDate(t.optString("trade_date")) + " · " + compact(t.optDouble("quantity")) + " × " + amount("", t.optDouble("price")), 11, INK, false), new LinearLayout.LayoutParams(0, -2, 1)); content.addView(item, margin(0, 3, 0, 4));
+        for (int i = 0; i < transactions.length(); i++) {
+            JSONObject t = transactions.optJSONObject(i); if (t == null) continue; CardColumn item = card(); item.setOrientation(LinearLayout.VERTICAL);
+            LinearLayout top = row(); top.setGravity(Gravity.CENTER_VERTICAL);
+            top.addView(text(t.optString("side"), 12, INK, true), new LinearLayout.LayoutParams(dp(42), -2));
+            top.addView(text(t.optString("holding_name") + " · " + shortDate(t.optString("trade_date")) + " · " + compact(t.optDouble("quantity")) + " × " + amount("", t.optDouble("price")), 11, INK, false), new LinearLayout.LayoutParams(0, -2, 1));
+            item.addView(top); content.addView(item, margin(0, 3, 0, 4));
+            content.addView(editDeleteRow(() -> showTransactionDialog(0, t.optLong("_id")),
+                    () -> confirmDeleteTransaction(t)), margin(62, 0, 0, 7));
         }
     }
     private void showBoundaries() {
@@ -2248,11 +2258,15 @@ private void showHome() {
             prompt.setOnShowListener(v -> prompt.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(b -> {
                 prompt.dismiss(); new Handler(Looper.getMainLooper()).post(() -> showHoldingEditor(null, null));
             })); prompt.show();
-        } else showDividendDialog(0);
+        } else showDividendDialog(0, 0);
     }
-    private void showDividendDialog(long preselectedId) {
-        JSONArray holdings = db.holdings(selectedAccount); if (holdings.length() == 0) { beginAddDividend(); return; }
-        MiuixListView holding = holdingSpinner(holdings, preselectedId); EditText perShare = numberEdit("", "本期每股/每份金额");
+    private void showDividendDialog(long preselectedHolding, long editId) {
+        JSONObject existing = editId > 0 ? db.dividendRow(editId) : null;
+        if (editId > 0 && existing == null) { toast("这笔分红已不存在"); render(); return; }
+        // Unfiltered while editing, so the account filter cannot hide the holding it belongs to.
+        JSONArray holdings = db.holdings(editId > 0 ? 0 : selectedAccount);
+        if (holdings.length() == 0) { beginAddDividend(); return; }
+        MiuixListView holding = holdingSpinner(holdings, existing != null ? existing.optLong("holding_id") : preselectedHolding); EditText perShare = numberEdit("", "本期每股/每份金额");
         EditText payDate = dateEdit(LocalDate.now().toString(), false), recordDate = dateEdit("", true), exDate = dateEdit("", true); MiuixListView status = spinner(new String[]{"预计", "已到账"}); EditText note = edit("", "备注（可选）");
         TextView estimate = text("金额按当前数量估算；实际到账额请以券商记录为准。", 10, ACCENT, false);
         EditText actualReceived = numberEdit("", "可选；按券商实际入账填写");
@@ -2263,6 +2277,15 @@ private void showHome() {
             String net = known ? amount(h.optString("currency"), FinanceMath.afterTax(gross, effectiveTaxRate(h, taxDate))) : "税务状态未知";
             estimate.setText("预计记录额 " + amount(h.optString("currency"), gross) + " · " + (known ? "税后情景 " + net : net + "（不等于免税）"));
         };
+        if (existing != null) {
+            perShare.setText(plain(existing.optDouble("amount_per_share")));
+            payDate.setText(existing.optString("pay_date"));
+            recordDate.setText(existing.optString("record_date"));
+            exDate.setText(existing.optString("ex_date"));
+            selectSpinner(status, "received".equals(existing.optString("status")) ? "已到账" : "预计");
+            note.setText(existing.optString("note"));
+            if (!existing.isNull("received_amount")) actualReceived.setText(plain(existing.optDouble("received_amount")));
+        }
         actualReceived.setVisibility("已到账".equals(selectedItem(status)) ? View.VISIBLE : View.GONE);
         perShare.addTextChangedListener(new TextWatcher() { public void beforeTextChanged(CharSequence s, int st, int c, int a) {} public void onTextChanged(CharSequence s, int st, int before, int count) { update.run(); } public void afterTextChanged(Editable e) {} });
         setSelectorListener(holding, new OnChooseItemListener() {
@@ -2276,7 +2299,7 @@ private void showHome() {
             }
         });
         LinearLayout f = form(); f.addView(field("关联持仓", holding)); f.addView(field("每股/每份分红金额", perShare)); f.addView(estimate, margin(3, -1, 0, 5)); f.addView(field("派息日", payDate)); f.addView(field("登记日（可选）", recordDate)); f.addView(field("除息日（可选）", exDate)); f.addView(field("状态", status)); f.addView(field("实际到账金额（可选，仅已到账时）", actualReceived)); f.addView(field("备注", note));
-        AlertDialog d = new MaterialAlertDialogBuilder(this).setTitle("添加分红事件").setView(wrapForm(f)).setNegativeButton("取消", null).setPositiveButton("保存", null).create();
+        AlertDialog d = new MaterialAlertDialogBuilder(this).setTitle(existing == null ? "添加分红事件" : "编辑分红事件").setView(wrapForm(f)).setNegativeButton("取消", null).setPositiveButton("保存", null).create();
         d.setOnShowListener(v -> d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(b -> { JSONObject h = selectedJson(holding); double p = parseNumber(perShare); LocalDate date = parseDate(payDate.getText().toString());
             if (h == null || p <= 0) { perShare.setError("分红金额需大于 0"); return; } if (date == null) { payDate.setError("请选择有效日期"); return; }
             String state = "已到账".equals(selectedItem(status)) ? "received" : "expected"; String taxDate = blankToNull(recordDate.getText().toString()); if (taxDate == null) taxDate = LocalDate.now().toString();
@@ -2285,28 +2308,93 @@ private void showHome() {
             if (!actualText.isEmpty()) { try { actual = Double.parseDouble(actualText); } catch (NumberFormatException ignored) { actual = -1d; } }
             if (actual != null && (!Double.isFinite(actual) || actual < 0d)) { actualReceived.setError("实际到账金额不能为负或无效"); return; }
             if (actual != null && !"received".equals(state)) { actualReceived.setError("请先将状态设为已到账"); return; }
-            db.addDividend(h.optLong("_id"), h.optLong("account_id"), p, p * h.optDouble("quantity"), h.optString("currency"), blankToNull(recordDate.getText().toString()), blankToNull(exDate.getText().toString()), date.toString(), state, rate, known, actual, note.getText().toString().trim());
-            hideKeyboard(d); d.dismiss(); render(); toast("分红事件已保存"); })); showFormDialog(d); update.run();
+            if (existing != null) {
+                if (!db.updateDividend(editId, h.optLong("_id"), h.optLong("account_id"), p, p * h.optDouble("quantity"), h.optString("currency"), blankToNull(recordDate.getText().toString()), blankToNull(exDate.getText().toString()), date.toString(), state, rate, known, actual, note.getText().toString().trim())) { perShare.setError("保存失败，请重试"); return; }
+            } else {
+                db.addDividend(h.optLong("_id"), h.optLong("account_id"), p, p * h.optDouble("quantity"), h.optString("currency"), blankToNull(recordDate.getText().toString()), blankToNull(exDate.getText().toString()), date.toString(), state, rate, known, actual, note.getText().toString().trim());
+            }
+            hideKeyboard(d); d.dismiss(); render(); toast(existing == null ? "分红事件已保存" : "分红事件已更新"); })); showFormDialog(d); update.run();
     }
-    private void showTransactionDialog(long preselectedId) {
-        JSONArray holdings = db.holdings(selectedAccount); if (holdings.length() == 0) {
+    private void showTransactionDialog(long preselectedHolding, long editId) {
+        JSONObject existing = editId > 0 ? firstRow(db.transactions(0, 1, editId)) : null;
+        if (editId > 0 && existing == null) { toast("这笔交易已不存在"); render(); return; }
+        // Unfiltered while editing: the account filter could otherwise hide the very holding the
+        // trade belongs to, and the spinner would silently show the wrong one.
+        JSONArray holdings = db.holdings(editId > 0 ? 0 : selectedAccount);
+        if (holdings.length() == 0) {
             AlertDialog prompt = new MaterialAlertDialogBuilder(this).setTitle("还没有持仓").setMessage("交易需要关联持仓。").setNegativeButton("取消", null).setPositiveButton("新增持仓", null).create();
             prompt.setOnShowListener(v -> prompt.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(b -> {
                 prompt.dismiss(); new Handler(Looper.getMainLooper()).post(() -> showHoldingEditor(null, null));
             })); prompt.show(); return;
         }
-        MiuixListView holding = holdingSpinner(holdings, preselectedId), side = spinner(new String[]{"买入", "卖出"}); EditText date = dateEdit(LocalDate.now().toString(), false);
+        MiuixListView holding = holdingSpinner(holdings, existing != null ? existing.optLong("holding_id") : preselectedHolding), side = spinner(new String[]{"买入", "卖出"}); EditText date = dateEdit(LocalDate.now().toString(), false);
         EditText quantity = numberEdit("", "数量"), price = numberEdit("", "成交单价"), fees = numberEdit("0", "手续费"); EditText note = edit("", "备注（可选）");
-        LinearLayout f = form(); f.addView(field("持仓", holding)); f.addView(field("方向", side)); f.addView(field("日期", date)); f.addView(field("数量", quantity)); f.addView(field("成交单价", price)); f.addView(field("手续费", fees)); f.addView(field("备注", note)); f.addView(text("买入手续费并入加权成本；卖出减少股数并保持原每份成本，不能超卖。", 10, MUTED, false));
-        AlertDialog d = new MaterialAlertDialogBuilder(this).setTitle("新增交易记录").setView(wrapForm(f)).setNegativeButton("取消", null).setPositiveButton("保存", null).create();
+        if (existing != null) {
+            selectSpinner(side, existing.optString("side", "买入"));
+            date.setText(existing.optString("trade_date"));
+            quantity.setText(plain(existing.optDouble("quantity"))); price.setText(plain(existing.optDouble("price")));
+            fees.setText(plain(existing.optDouble("fees"))); note.setText(existing.optString("note"));
+        }
+        LinearLayout f = form(); f.addView(field("持仓", holding)); f.addView(field("方向", side)); f.addView(field("日期", date)); f.addView(field("数量", quantity)); f.addView(field("成交单价", price)); f.addView(field("手续费", fees)); f.addView(field("备注", note)); f.addView(text("买入手续费并入加权成本；卖出减少股数并保持原每份成本，不能超卖。保存后该持仓的数量与成本会按全部记录重新计算。", 10, MUTED, false));
+        AlertDialog d = new MaterialAlertDialogBuilder(this).setTitle(existing == null ? "新增交易记录" : "编辑交易记录").setView(wrapForm(f)).setNegativeButton("取消", null).setPositiveButton("保存", null).create();
         d.setOnShowListener(v -> d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(b -> { JSONObject h = selectedJson(holding); double q = parseNumber(quantity), p = parseNumber(price), fee = parseNumber(fees); LocalDate dt = parseDate(date.getText().toString());
             if (h == null) { toast("请先选择持仓"); return; }
             if (!hasNumber(quantity) || q <= 0) { quantity.setError("数量需大于 0"); return; }
             if (!hasNumber(price) || p < 0) { price.setError("成交单价不能为负"); return; }
             if (!hasNumber(fees) || fee < 0) { fees.setError("手续费不能为负"); return; }
             if (dt == null) { date.setError("日期无效"); return; }
-            if (!db.addTransaction(h.optLong("_id"), h.optLong("account_id"), selectedItem(side), dt.toString(), q, p, fee, note.getText().toString())) { quantity.setError("卖出数量不能超过当前持仓，未保存"); return; }
-            hideKeyboard(d); d.dismiss(); render(); toast("交易已保存"); })); showFormDialog(d);
+            long target = h.optLong("_id"), account = h.optLong("account_id"); String sideValue = selectedItem(side);
+            if (existing != null) {
+                if (!db.updateTransaction(editId, target, account, sideValue, dt.toString(), q, p, fee, note.getText().toString())) { quantity.setError("保存失败，请检查数量是否超过该时点持仓"); return; }
+            } else if (!db.addTransaction(target, account, sideValue, dt.toString(), q, p, fee, note.getText().toString())) { quantity.setError("卖出数量不能超过当前持仓，未保存"); return; }
+            hideKeyboard(d); d.dismiss(); render(); toast(existing == null ? "交易已保存" : "交易已更新，持仓成本已重算"); })); showFormDialog(d);
+    }
+
+    private void confirmDeleteTransaction(JSONObject t) {
+        String what = t.optString("holding_name") + " · " + shortDate(t.optString("trade_date")) + " · "
+                + t.optString("side") + " " + compact(t.optDouble("quantity"));
+        new MaterialAlertDialogBuilder(this).setTitle("删除这笔交易").setMessage(what
+                        + "\n\n删除后该持仓的数量与成本会按剩余记录重新计算，这笔交易对持有期税率的贡献也会一并移除。已到账的分红不受影响。")
+                .setNegativeButton("取消", null)
+                .setPositiveButton("删除", (d, w) -> {
+                    if (db.deleteTransaction(t.optLong("_id"))) { render(); toast("交易已删除，持仓成本已重算"); }
+                    else toast("删除失败，请重试");
+                }).show();
+    }
+
+    private void confirmDeleteDividend(JSONObject e) {
+        String what = e.optString("holding_name", "分红") + " · " + shortDate(e.optString("pay_date"))
+                + " · " + amount(e.optString("currency", "CNY"), e.optDouble("total"));
+        boolean dilutes = !e.isNull("received_amount") && e.optDouble("received_amount") > 0;
+        new MaterialAlertDialogBuilder(this).setTitle("删除这笔分红").setMessage(what
+                        + (dilutes ? "\n\n这笔分红已摊薄过持仓成本，删除后会被加回，成本与收益数字会随之变化。" : "")
+                        + "\n\n删除只影响这一笔，不影响其他分红记录。")
+                .setNegativeButton("取消", null)
+                .setPositiveButton("删除", (d, w) -> {
+                    if (db.deleteDividend(e.optLong("_id"))) { render(); toast("分红已删除"); }
+                    else toast("删除失败，请重试");
+                }).show();
+    }
+
+    /** Edit and delete, offered on every row that shows a single stored record. */
+    private LinearLayout editDeleteRow(Runnable onEdit, Runnable onDelete) {
+        LinearLayout row = row(); row.setGravity(Gravity.CENTER_VERTICAL); row.setBaselineAligned(false);
+        row.addView(actionButton("编辑", false, onEdit), new LinearLayout.LayoutParams(-2, -2));
+        View gap = new View(this); gap.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        row.addView(gap, new LinearLayout.LayoutParams(dp(8), 1));
+        row.addView(actionButton("删除", false, onDelete), new LinearLayout.LayoutParams(-2, -2));
+        return row;
+    }
+
+    private static JSONObject firstRow(JSONArray rows) {
+        return rows == null || rows.length() == 0 ? null : rows.optJSONObject(0);
+    }
+
+    /** A stored number back into an input, without the grouping and padding used for display. */
+    private static String plain(double value) {
+        if (!Double.isFinite(value)) return "";
+        if (value == Math.rint(value) && Math.abs(value) < 1e15) return String.valueOf((long) value);
+        return String.valueOf(value);
     }
 
     private void chooseAccount() {

@@ -30,7 +30,7 @@ editor = section("private void showHoldingEditor(", "private interface CatalogPi
 transactions = section("private void showTransactions()", "private void showBoundaries()")
 quick_actions = section("private void showHoldingQuickActions()", "private void addTaxToggle()")
 
-require("版本递增到 1.4.10 / code 24", "versionName '1.4.10'" in BUILD and re.search(r"versionCode\s+24\b", BUILD) is not None)
+require("版本递增到 1.4.11 / code 25", "versionName '1.4.11'" in BUILD and re.search(r"versionCode\s+25\b", BUILD) is not None)
 require("日历切换控件独占同一卡片，不再显示说明或账户范围行", "calendarControlPanel()" in calendar and "calendarHelpRow()" not in MAIN and "日历说明" not in MAIN and "accountScopeLabel()" not in controls)
 require("Material 单选组始终要求保留一个已选视图", "group.setSingleSelection(true)" in toggle and "group.setSelectionRequired(true)" in toggle and "addOnButtonCheckedListener" in toggle)
 require("月历和年度总览均保留并共享可用宽度", 'String[] labels = {"月历", "年度总览"}' in toggle and "new LinearLayout.LayoutParams(0, dimen(R.dimen.ds_touch_target_min), 1)" in toggle)
@@ -54,7 +54,7 @@ require("公开同步和手工录入入口保留完整读屏名称及本地图�
 require("加号新增持仓仍可手动新增和识别截图", 'setItems(new String[]{"手动新增持仓", "识别券商截图"}' in quick_actions and "chooseBrokerScreenshot()" in quick_actions)
 require("行情有涨红、跌绿、平盘中性和方向文字", 'changePercent > 0d ? MARKET_UP : changePercent < 0d ? MARKET_DOWN : INK' in MAIN and '"上涨 +"' in MAIN and '"下跌 "' in MAIN and '"平盘 0.00%"' in MAIN)
 require("持仓与编辑器行情都调用方向文案/颜色", "marketMoveLabel(quote.changePercent)" in holdings and "marketMoveColor(quote.changePercent)" in holdings and "marketMoveLabel(quote.changePercent)" in editor and "setTextColor(marketMoveColor(quote.changePercent))" in editor)
-require("买入/卖出标签不再冒充行情涨跌", 'item.addView(text(t.optString("side"), 12, INK, true)' in transactions)
+require("买入/卖出标签不再冒充行情涨跌", 'top.addView(text(t.optString("side"), 12, INK, true)' in transactions)
 require("分红预测和到账指标使用独立分红语义令牌", "R.color.app_dividend_on_hero" in MAIN and "DIVIDEND" in MAIN)
 require("主卡片与卡片列均使用 HiMiuix MiuixCardView", "MiuixCardView heroSurface" in MAIN and "CardColumn extends MiuixCardView" in MAIN)
 require("日历使用三色圆点和完整名称图例，不再重复登除派缩写", "calendarMarkerDot(markerColors[ti], 6, selected)" in calendar and 'calendarLegendItem("股权登记"' in calendar and 'calendarLegendItem("除权除息"' in calendar and 'calendarLegendItem("派息日"' in calendar and "markerLabels" not in calendar)

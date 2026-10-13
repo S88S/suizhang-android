@@ -30,7 +30,7 @@ final class MarketDataClient {
      * compiles standalone in scripts/test-market-data.sh; scripts/test-market-data.py pins it to
      * the Gradle versionName so it cannot drift.
      */
-    static final String APP_VERSION = "1.4.10";
+    static final String APP_VERSION = "1.4.11";
     static final long DIVIDEND_TTL_MS = 24 * 60 * 60_000L;
     private static final int TIMEOUT_MS = 8_000;
     private final SharedPreferences cache;

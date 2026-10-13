@@ -92,7 +92,7 @@ require("日历行渲染时按当前 A 股批次重新核验，旧存储 tax_kno
 require("A 股自定义税率分红仍沿用事件已保存费率", 'taxHolding.put("tax_rate", e.optDouble("tax_rate", 0d))' in event_row)
 require("月历和首页未来分红查询都附带持仓市场/税务模式/现量", "h.tax_mode AS holding_tax_mode" in calendar_query and "h.quantity AS holding_quantity" in calendar_query and "h.market AS holding_market,h.tax_mode AS holding_tax_mode,h.quantity AS holding_quantity" in db)
 require("覆盖和日期边界测试已接入核心 FinanceMathTest", "hasCompleteTaxLotCoverage" in tests and "超过一个月一天" in tests and "超过一年一天" in tests)
-require("数据库仍为 schema 4，没有引入 schema 5", "DB_VERSION = 4" in db and "oldVersion < 5" not in db)
+require("数据库为 schema 5（期初成本列），没有引入 schema 6", "DB_VERSION = 5" in db and "oldVersion < 6" not in db)
 
 # Opening position is cached per holding to avoid re-reading the same row three times per tax
 # calculation. The cache must never outlive a write, otherwise a stale opening quantity or

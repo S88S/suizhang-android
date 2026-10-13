@@ -34,7 +34,7 @@ require("编辑重开时从 SQLite 持仓行与元数据恢复预测/来源", 'e
 require("持仓卡片不把零预测伪装成有效金额", 'gross > 0d ? amount(currency, gross) : "暂无数据"' in holdings)
 require("卡片区分历史推算/手工值并展示更新时间", "forecastSourceLabel(h)" in holdings and 'timeLabel(meta.optLong("updated_at"' in activity)
 require("总览无任何预测时显示暂无数据", "hasAnyDividendEstimate()" in home and '"暂无数据"' in home)
-require("数据库补写受持仓代码和市场约束且 schema 4 兼容迁移", '"_id=? AND code=? AND market=?"' in database and "DB_VERSION = 4" in database and "cost_method" in database and "received_amount" in database)
+require("数据库补写受持仓代码和市场约束且 schema 5 兼容迁移", '"_id=? AND code=? AND market=?"' in database and "DB_VERSION = 5" in database and "cost_method" in database and "received_amount" in database)
 require("旧缓存状态可在预测卡片标注", "result.stale" in forecast and '"stale"' in activity)
 require("分红客户端捕获代码构造/网络异常并回退缓存", "request(dividendUrl(normalizedMarket, normalizedCode), false)" in market and "fallback.isEmpty()" in market)
 print("通过：分红录入/持久化源码级闭环回归（不等同于 UI 真机点击）")

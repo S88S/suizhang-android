@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Guards for batch dividend-arrival confirmation, covering both entry points.
 
-Filling in a received amount feeds adjustCostForDividend and silently rewrites holding
-cost, so the batch path must never write received_amount. That invariant is behavioural,
-not stylistic: a batch the user cannot itemise should not move money.
+An actual received amount is what dilutes the holding's cost basis, so the batch path must
+never write received_amount. That invariant is behavioural, not stylistic: a batch the user
+cannot itemise should not move money.
 
 Two entry points exist and both route through the same database transaction:
   - overview page: countPendingReceived(rows) -> confirmMarkReceivedBatch(rows)
@@ -38,9 +38,9 @@ confirm_calendar = activity[activity.index("private void confirmMarkReceivedBatc
 # --- shared database contract (both entry points depend on it) ---
 require("批量路径只更新 status，不改 received_amount",
         'cv.put("status", "received")' in batch and "received_amount" not in batch)
-require("批量路径不触发分红摊薄成本", "adjustCostForDividend" not in batch)
+require("批量路径不触发成本重算", "rebuildHolding" not in batch)
 require("批量路径不写入实收金额，单笔路径仍然写入",
-        "adjustCostForDividend" in database and "received_amount" in database)
+        "rebuildHolding(db, holdingId);" in database and "received_amount" in database)
 require("只更新仍为 expected 的记录，重复调用幂等", "_id=? AND status='expected'" in batch)
 require("所有更新位于单一 SQLite 事务中",
         "beginTransaction()" in batch and "setTransactionSuccessful()" in batch and "endTransaction()" in batch)

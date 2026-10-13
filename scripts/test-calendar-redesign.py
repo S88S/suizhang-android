@@ -26,7 +26,7 @@ context_button = section("private MaterialButton calendarContextButton(", "priva
 calendar = section("private void showCalendar()", "private CardColumn calendarControlPanel()")
 render = section("private void render()", "private MiuixBottomNavigatorView bottomNav()")
 
-require("新包版本递增且应用身份可覆盖升级", "versionName '1.4.10'" in BUILD and re.search(r"versionCode\s+24\b", BUILD) is not None and "applicationId 'cn.suizhang.ledger'" in BUILD and "applicationIdSuffix '.debug'" in BUILD)
+require("新包版本递增且应用身份可覆盖升级", "versionName '1.4.11'" in BUILD and re.search(r"versionCode\s+25\b", BUILD) is not None and "applicationId 'cn.suizhang.ledger'" in BUILD and "applicationIdSuffix '.debug'" in BUILD)
 require("继续使用现有 Material Components Views 依赖", "com.google.android.material:material:1.14.0" in BUILD and "MaterialButtonToggleGroup" in MAIN and "androidx.compose" not in BUILD)
 require("麦金色作为浅/深主题主色，日历与行情语义另保留", '"primary"' in DESIGN and "#8A5E0B" in DESIGN and "#F0C45B" in DESIGN and "#B3261E" in DESIGN and "#FF8A80" in DESIGN)
 require("日历视图组保持单选并使用图标", "group.setSingleSelection(true)" in toggle and "group.setSelectionRequired(true)" in toggle and "ic_nav_calendar" in toggle and "ic_calendar_view_month_24" in toggle)

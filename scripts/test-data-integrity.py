@@ -44,7 +44,7 @@ require("交易与分红补上 holding_id 索引",
         "idx_transactions_holding" in database and "idx_dividends_holding" in database)
 require("已安装的库也能补上索引，无需升 schema",
         "CREATE INDEX IF NOT EXISTS" in database and "public synchronized void onOpen(SQLiteDatabase db)" in database)
-require("schema 仍冻结在 4", re.search(r"DB_VERSION\s*=\s*4", database) is not None)
+require("schema 为 5，新增期初成本列以支持编辑后重算", re.search(r"DB_VERSION\s*=\s*5", database) is not None)
 
 # --- LIKE wildcards ---
 require("标的索引搜索转义 % 和 _，不再一条通配匹配全表",
@@ -82,8 +82,8 @@ require("行情请求分批，不再把所有代码拼进一个 URL",
 require("User-Agent 版本号不再停在 1.3，且与 Gradle 版本一致",
         "APP_VERSION" in client
         and 'Suizhang-Android/" + APP_VERSION' in client
-        and 'APP_VERSION = "1.4.10"' in client
-        and "versionName '1.4.10'" in gradle)
+        and 'APP_VERSION = "1.4.11"' in client
+        and "versionName '1.4.11'" in gradle)
 require("HTTP 错误带上响应体片段，不再只有一个状态码",
         "errorBody(connection)" in client and "getErrorStream()" in client)
 require("连接禁用缓存", "setUseCaches(false)" in client)

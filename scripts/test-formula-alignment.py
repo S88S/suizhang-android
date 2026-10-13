@@ -18,12 +18,12 @@ def require(label, ok):
 
 require("成本类覆盖分红摊薄/摊薄/加权平均", all(x in finance for x in ("COST_DIVIDEND_ADJUSTED", "COST_DILUTED", "COST_WEIGHTED_AVERAGE")))
 require("卖出费用加入剩余成本", "oldUnitCost * remaining + fees" in finance and "- sellQuantity * sellPrice + fees" in finance)
-require("分红摊薄只使用明确的净实收", "actualNetReceipt" in finance and "costAfterReceivedDividend" in db)
+require("分红摊薄只使用明确的净实收，并由重放统一执行", "actualNetReceipt" in finance and "CostReplay.replay(" in db)
 require("收益指标含昨收息率/成本息率/浮动盈亏/同币种占比/持股天数", all(x in finance for x in ("marketYield", "costYield", "floatingProfit", "positionWeight", "holdingDays")))
 require("税后未知时返回不可用而不沿用税前金额", "if (!taxEstimateKnown(h, today)) return Double.NaN" in main)
 require("年度实收汇总优先使用实际到账金额", '"received".equals(e.optString("status")) && !e.isNull("received_amount") ? e.optDouble("received_amount")' in main)
 require("外币组合仅按币种分列，不冒充统一组合权重", "同币种占比" in main and "外币汇率折算尚未接入" in main)
-require("schema 4 保留加权平均兼容默认和可空实收列", "DB_VERSION = 4" in db and "DEFAULT 'weighted_average'" in db and "received_amount REAL" in db)
+require("schema 5 保留加权平均兼容默认和可空实收列", "DB_VERSION = 5" in db and "DEFAULT 'weighted_average'" in db and "received_amount REAL" in db)
 
 upgrade = re.search(r"if \(oldVersion < 4\) \{(.*?)\n        \}", db, re.S)
 if not upgrade:

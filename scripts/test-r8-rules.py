@@ -49,7 +49,7 @@ require("混淆规则未放宽到全量保留（否则等于没开）",
         not any(line.strip() in ("-dontobfuscate", "-dontshrink", "-keep class cn.suizhang.ledger.** { *; }")
                 for line in rules.splitlines()))
 
-require("数据库 schema 仍冻结在 4（混淆不改结构）",
-        "DB_VERSION = 4" in database and "oldVersion < 5" not in database)
+require("数据库 schema 为 5（混淆不改结构）",
+        "DB_VERSION = 5" in database and "oldVersion < 6" not in database)
 
 print("通过：R8 混淆配置与 keep 规则回归完成；反射入口的保留只能证明规则存在，真机仍需冒烟验证。")

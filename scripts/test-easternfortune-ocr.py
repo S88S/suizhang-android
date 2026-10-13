@@ -63,8 +63,8 @@ require("OCR 失败和无法读取图片仍可进入空白手工核对", "addOnF
 require("未解析日期保持空白并要求显式选有效日期", 'EditText date = dateEdit("", false)' in review and 'ocr_date_unparsed' in review and 'openedOn.setError("请选择有效日期")' in editor and "截图未识别；请选择" in editor)
 require("历史交易/已到账记录只提示不导入", "历史交易/已到账记录不会从本次持仓识别导入" in review and "db.addTransaction(" not in ocr_path and "db.addDividend(" not in ocr_path)
 require("预览不记录或展示股东号及原始整页文本", "不显示股东号" in review and "Text raw" not in review)
-require("截图识别不新增相机/相册权限，schema 4 仍不存 OCR 原文",
-        "DB_VERSION = 4" in database
+require("截图识别不新增相机/相册权限，schema 5 仍不存 OCR 原文",
+        "DB_VERSION = 5" in database
         and "uses-permission" in manifest
         and "android.permission.CAMERA" not in manifest
         and not any(p in manifest for p in ("READ_MEDIA_IMAGES", "READ_EXTERNAL_STORAGE"))
@@ -73,5 +73,5 @@ require("权限清单只有网络与通知两项，通知权限供 WorkManager �
         "android.permission.INTERNET" in manifest
         and "android.permission.POST_NOTIFICATIONS" in manifest
         and manifest.count("uses-permission") == 2)
-require("本轮版本仅升至 1.4.10 / code 24", "versionName '1.4.10'" in build and "versionCode 24" in build)
+require("本轮版本仅升至 1.4.11 / code 25", "versionName '1.4.11'" in build and "versionCode 25" in build)
 print("通过：东方财富截图导入路径源码/结构回归完成；源码检查不替代 Android 设备目视测试。")

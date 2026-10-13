@@ -48,7 +48,7 @@ require("销毁时先优雅停机再关库，避免后台任务拿着失效 Curs
 
 # --- atomicity ---
 mark_received = database[database.index("void markDividendReceived("):database.index("int markReceivedBatch(")]
-add_dividend = database[database.index("long addDividend("):database.index("private void adjustCostForDividend(")]
+add_dividend = database[database.index("long addDividend("):database.index("boolean addPublicDividend(")]
 require("标记到账与其成本摊薄进入同一事务",
         "beginTransaction()" in mark_received and "setTransactionSuccessful()" in mark_received)
 require("新增分红与其成本摊薄进入同一事务",

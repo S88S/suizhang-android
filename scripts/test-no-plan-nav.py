@@ -31,7 +31,7 @@ require("四栏标签显式设置字号且等宽均匀排布",
         and "nav.setIconSize(" in activity
         and "nav.inflateMenu(R.menu.bottom_navigation)" in activity)
 require("规划专属菜单文案和图标资源引用已移除", "nav_plan" not in strings_text and not (root / "app/src/main/res/drawable/ic_nav_plan.xml").exists())
-require("SQLite schema 升至 4 且不删除支出目标/备份", re.search(r"DB_VERSION\s*=\s*4", database) is not None)
+require("SQLite schema 升至 5 且不删除支出目标/备份", re.search(r"DB_VERSION\s*=\s*5", database) is not None)
 require("支出目标表及其完整 JSON 备份字段仍保留", 'CREATE TABLE IF NOT EXISTS expense_goals' in database and 'root.put("expense_goals"' in database)
 require("DRIP 历史设置仍保留在既有设置表/完整备份中", '"drip_yield"' in database and 'root.put("app_settings"' in database)
 print("通过：规划导航移除回归；本测试检查资源/路由和数据保留，不替代设备屏幕测试。")
