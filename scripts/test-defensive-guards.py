@@ -11,6 +11,7 @@ from pathlib import Path
 root = Path(__file__).resolve().parents[1]
 activity = (root / "app/src/main/java/cn/suizhang/ledger/MainActivity.java").read_text(encoding="utf-8")
 formats = (root / "app/src/main/java/cn/suizhang/ledger/LedgerFormats.java").read_text(encoding="utf-8")
+rules = (root / "app/src/main/java/cn/suizhang/ledger/DividendTaxRules.java").read_text(encoding="utf-8")
 database = (root / "app/src/main/java/cn/suizhang/ledger/LedgerDatabase.java").read_text(encoding="utf-8")
 worker = (root / "app/src/main/java/cn/suizhang/ledger/DividendReminderWorker.java").read_text(encoding="utf-8")
 milestones = (root / "app/src/main/java/cn/suizhang/ledger/DividendMilestones.java").read_text(encoding="utf-8")
@@ -30,9 +31,9 @@ require("渲染主体拆到 renderPage，保持 render 为受保护入口",
 
 # --- a hand-edited Excel settings sheet must not be able to crash on every render ---
 require("A 股三档税率先钳制再传入，避免参数校验直接抛异常",
-        "clampRate(settingDouble(\"tax_a_short\", .2))" in activity
-        and "clampRate(settingDouble(\"tax_a_mid\", .1))" in activity
-        and "clampRate(settingDouble(\"tax_a_long\", 0))" in activity)
+        "clampRate(settingDouble(port, \"tax_a_short\", .2))" in rules
+        and "clampRate(settingDouble(port, \"tax_a_mid\", .1))" in rules
+        and "clampRate(settingDouble(port, \"tax_a_long\", 0))" in rules)
 require("复利页的再投资比例与税率同样先钳制",
         "clampRate(settingDouble(\"drip_reinvest\", 1))" in activity
         and "clampRate(settingDouble(\"drip_tax\", .10))" in activity)
