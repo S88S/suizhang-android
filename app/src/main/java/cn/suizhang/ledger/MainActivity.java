@@ -39,6 +39,7 @@ import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.GridLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -855,6 +856,24 @@ private void showHome() {
         String ym = String.format(Locale.US, "%04d-%02d", cur.getYear(), cur.getMonthValue());
         JSONArray events = db.dividends(selectedAccount, ym); if (events == null) events = new JSONArray();
         final JSONArray batchEvents = events;
+        Map<Integer, int[]> marks = calendarMarks(events, ym);
+
+        content.addView(calendarAnnouncedCard(db.announcedDividends(selectedAccount, LocalDate.now().toString())), margin(0, 0, 0, 10));
+        content.addView(calendarMonthHeader(cur), margin(0, 0, 0, 6));
+        content.addView(calendarLegendRow(), margin(0, 0, 0, 5));
+        content.addView(calendarMonthTotalsCard(events, ym, batchEvents, cur), margin(0, 0, 0, 7));
+
+        long dividendSyncAt = settingLong("dividend_sync_at", 0L); boolean syncStale = "true".equals(setting("dividend_sync_stale", "false"));
+        String freshness = dividendSyncAt > 0 ? "公开分红数据上次更新 " + timeLabel(dividendSyncAt) + (syncStale ? " · 含旧缓存" : "") : "公开分红数据尚未同步；新公告同步后显示在上方提醒。";
+        content.addView(text(freshness + "  ·  日期和金额以正式公告为准。", 10, MUTED, false), margin(2, 0, 0, 6));
+
+        content.addView(calendarGridCard(cur, marks), margin(0, 0, 0, 8));
+        calendarEventList(cur, ym, events);
+        content.addView(calendarActionRow(), margin(0, 0, 0, 10));
+    }
+
+    /** 把该月每一天命中的事件类型（登记/除息/派息）聚成位图，供日历格渲染圆点。 */
+    private Map<Integer, int[]> calendarMarks(JSONArray events, String ym) {
         Map<Integer, int[]> marks = new TreeMap<>();
         for (int i = 0; i < events.length(); i++) {
             JSONObject e = events.optJSONObject(i); if (e == null) continue;
@@ -862,74 +881,200 @@ private void showHome() {
             markCalendarDate(marks, e.optString("ex_date"), ym, 1);
             markCalendarDate(marks, e.optString("pay_date"), ym, 2);
         }
+        return marks;
+    }
 
-        JSONArray announced = db.announcedDividends(selectedAccount, LocalDate.now().toString());
+    /** 顶部「已公告的持仓分红」卡片：按币种汇总待收，点按跳到最早派息日。 */
+    /**
+     * 顶部公告提醒：压成一条横向窄条，不占整卡。
+     *
+     * 息记的做法是把「本月还有 N 笔即将到账」收成一行带图标的小条，金额用强调色。
+     * 原来的整张卡片把笔数、预计待收、口径说明三行平铺，视觉重量和日历网格相当，
+     * 提醒本该是配角却抢了主角的位置。
+     */
+    private View calendarAnnouncedCard(JSONArray announced) {
         TreeMap<String, Double> announcedAmounts = new TreeMap<>();
         for (int i = 0; i < announced.length(); i++) {
             JSONObject e = announced.optJSONObject(i); if (e == null) continue;
             String c = e.optString("currency", "CNY");
             announcedAmounts.put(c, announcedAmounts.getOrDefault(c, 0d) + e.optDouble("total"));
         }
-        CardColumn announcedCard = card(); announcedCard.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout announcedHead = row(); announcedHead.setGravity(Gravity.CENTER_VERTICAL);
-        announcedHead.addView(text("已公告的持仓分红", 14, INK, true), new LinearLayout.LayoutParams(0, -2, 1));
-        announcedHead.addView(text(announced.length() + " 笔", 11, ACCENT, true)); announcedCard.addView(announcedHead);
+        LinearLayout strip = row();
+        strip.setGravity(Gravity.CENTER_VERTICAL);
+        strip.setBackground(roundPx(PRIMARY_CONTAINER, dimen(R.dimen.ds_calendar_cell_radius), 0, 0));
+        strip.setPadding(dp(12), dp(9), dp(12), dp(9));
+
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(R.drawable.ic_notifications_active_24);
+        icon.setColorFilter(ACCENT);
+        LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(16), dp(16));
+        strip.addView(icon, iconParams);
+
         if (announced.length() > 0) {
-            announcedCard.addView(text("预计待收  " + LedgerFormats.formatAmounts(announcedAmounts), 14, DIVIDEND, true), margin(0, 5, 0, 0));
-            announcedCard.addView(text("仅汇总已公告事件的记录金额，按币种分别展示；实际方案与到账以正式公告及券商记录为准。", 10, MUTED, false), margin(0, 4, 0, 0));
-            JSONObject first = announced.optJSONObject(0); LocalDate firstDate = first == null ? null : LedgerFormats.parseDate(first.optString("pay_date"));
-            announcedCard.setContentDescription("有 " + announced.length() + " 笔已公告的预期分红，预计待收 " + LedgerFormats.formatAmounts(announcedAmounts) + (firstDate == null ? "" : "；点按跳转到最早派息日"));
-            announcedCard.setOnClickListener(v -> {
-                if (firstDate != null) { year = firstDate.getYear(); month = firstDate.getMonthValue(); selectedDay = firstDate.getDayOfMonth(); calendarYearView = false; render(); }
+            TextView body = text("本月还有 " + announced.length() + " 笔分红即将到账", 12, INK, false);
+            body.setPadding(dp(7), 0, 0, 0);
+            strip.addView(body, new LinearLayout.LayoutParams(0, -2, 1));
+            TextView amount = text(LedgerFormats.formatAmounts(announcedAmounts), 13, DIVIDEND, true);
+            strip.addView(amount);
+            JSONObject first = announced.optJSONObject(0);
+            LocalDate firstDate = first == null ? null : LedgerFormats.parseDate(first.optString("pay_date"));
+            strip.setContentDescription("本月还有 " + announced.length() + " 笔分红即将到账，预计合计 "
+                    + LedgerFormats.formatAmounts(announcedAmounts)
+                    + (firstDate == null ? "" : "；点按跳转到最早派息日"));
+            strip.setFocusable(true);
+            strip.setOnClickListener(v -> {
+                if (firstDate != null) {
+                    year = firstDate.getYear(); month = firstDate.getMonthValue();
+                    selectedDay = firstDate.getDayOfMonth(); calendarYearView = false; render();
+                }
             });
-            announcedCard.setFocusable(true);
         } else {
-            announcedCard.addView(text("当前没有已同步的未来公告分红；历史推算不会冒充正式公告。", 11, MUTED, false), margin(0, 4, 0, 0));
-            announcedCard.addView(actionButton("更新公开公告", false, this::syncPublicDividends), margin(0, 5, 0, 0));
+            TextView body = text("当前没有已同步的未来公告分红", 12, MUTED, false);
+            body.setPadding(dp(7), 0, 0, 0);
+            strip.addView(body, new LinearLayout.LayoutParams(0, -2, 1));
+            TextView action = text("更新", 12, ACCENT, true);
+            action.setPadding(dp(8), dp(2), dp(4), dp(2));
+            action.setFocusable(true);
+            action.setContentDescription("更新公开公告");
+            action.setOnClickListener(v -> syncPublicDividends());
+            strip.addView(action);
         }
-        content.addView(announcedCard, margin(0, 0, 0, 10));
+        // 合规提示压缩到一行极弱色小字：不占空间，但「以正式公告为准」这句不能丢。
+        // 记在这里而不是复用原卡片的整段说明，是因为提醒条只剩一行高度。
+        TextView notice = text("以正式公告及券商记录为准", 9, MUTED, false);
+        notice.setPadding(0, dp(3), 0, 0);
+        LinearLayout wrap = new LinearLayout(this);
+        wrap.setOrientation(LinearLayout.VERTICAL);
+        strip.setPadding(dp(12), dp(9), dp(12), dp(7));
+        wrap.addView(strip);
+        wrap.addView(notice, margin(2, 0, 0, 0));
+        return wrap;
+    }
 
-        LinearLayout monthHead = row(); monthHead.setGravity(Gravity.CENTER_VERTICAL);
-        monthHead.addView(calendarNavButton(R.drawable.ic_chevron_left_24, "上一个月", () -> shiftMonth(-1)), new LinearLayout.LayoutParams(dp(48), dp(48)));
-        LinearLayout monthTitleBox = new LinearLayout(this); monthTitleBox.setGravity(Gravity.CENTER); monthTitleBox.setOrientation(LinearLayout.VERTICAL);
-        TextView monthTitle = text(cur.format(DateTimeFormatter.ofPattern("yyyy 年 M 月")), 17, INK, true); monthTitle.setGravity(Gravity.CENTER); monthTitleBox.addView(monthTitle);
-        MaterialButton todayButton = calendarContextButton("回到今天", R.drawable.ic_today_24, "回到今天并选中今天", this::showCurrentMonth); monthTitleBox.addView(todayButton);
+    /** 月份标题 + 左右翻月 + 回到今天。 */
+    /** 月份标题 + 左右翻月。标题下挂一行「点击回今天」，省掉一个独立按钮。 */
+    private LinearLayout calendarMonthHeader(YearMonth cur) {
+        LinearLayout monthHead = row();
+        monthHead.setGravity(Gravity.CENTER_VERTICAL);
+        monthHead.addView(calendarNavButton(R.drawable.ic_chevron_left_24, "上一个月", () -> shiftMonth(-1)),
+                new LinearLayout.LayoutParams(dp(44), dp(44)));
+        LinearLayout monthTitleBox = new LinearLayout(this);
+        monthTitleBox.setGravity(Gravity.CENTER);
+        monthTitleBox.setOrientation(LinearLayout.VERTICAL);
+        TextView monthTitle = text(cur.format(DateTimeFormatter.ofPattern("yyyy 年 M 月")), 17, INK, true);
+        monthTitle.setGravity(Gravity.CENTER);
+        monthTitleBox.addView(monthTitle);
+        TextView todayHint = text("点击回今天", 10, MUTED, false);
+        todayHint.setGravity(Gravity.CENTER);
+        monthTitleBox.addView(todayHint);
+        monthTitleBox.setFocusable(true);
+        monthTitleBox.setContentDescription("当前 " + cur.getYear() + " 年 " + cur.getMonthValue() + " 月，点按回到今天");
+        monthTitleBox.setOnClickListener(v -> showCurrentMonth());
         monthHead.addView(monthTitleBox, new LinearLayout.LayoutParams(0, -2, 1));
-        monthHead.addView(calendarNavButton(R.drawable.ic_chevron_right_24, "下一个月", () -> shiftMonth(1)), new LinearLayout.LayoutParams(dp(48), dp(48)));
-        content.addView(monthHead, margin(0, 0, 0, 6));
+        monthHead.addView(calendarNavButton(R.drawable.ic_chevron_right_24, "下一个月", () -> shiftMonth(1)),
+                new LinearLayout.LayoutParams(dp(44), dp(44)));
+        return monthHead;
+    }
 
-        LinearLayout legend = row(); legend.setGravity(Gravity.CENTER_VERTICAL);
-        legend.addView(calendarLegendItem("股权登记", getColor(R.color.app_calendar_record_date)), new LinearLayout.LayoutParams(0, -2, 1));
-        legend.addView(calendarLegendItem("除权除息", getColor(R.color.app_calendar_ex_date)), new LinearLayout.LayoutParams(0, -2, 1));
-        legend.addView(calendarLegendItem("派息日", getColor(R.color.app_calendar_pay_date)), new LinearLayout.LayoutParams(0, -2, 1));
-        content.addView(legend, margin(0, 0, 0, 5));
+    /** 三色圆点图例（登记 / 除息 / 派息），用完整名称而非缩写。 */
+    /** 三色图例：小圆点 + 名称，居中等分，不抢视觉重量。 */
+    private LinearLayout calendarLegendRow() {
+        LinearLayout legend = row();
+        legend.setGravity(Gravity.CENTER);
+        legend.addView(calendarLegendItem("股权登记", getColor(R.color.app_calendar_record_date)),
+                new LinearLayout.LayoutParams(0, -2, 1));
+        legend.addView(calendarLegendItem("除权除息", getColor(R.color.app_calendar_ex_date)),
+                new LinearLayout.LayoutParams(0, -2, 1));
+        legend.addView(calendarLegendItem("派息日", getColor(R.color.app_calendar_pay_date)),
+                new LinearLayout.LayoutParams(0, -2, 1));
+        return legend;
+    }
 
+    /** 本月到账与待收：已到账优先用实收金额，待收用税前记录金额，各币种不合并换算。 */
+    /**
+     * 本月到账与待收：金额大字在前，口径说明收进可展开区。
+     *
+     * 原来四行文字平铺，其中两行是「待收使用税前记录金额……各币种不合并换算」这类
+     * 一次性说明。按息记的做法，口径默认折叠，需要时点开，卡片只留主数字。
+     */
+    private CardColumn calendarMonthTotalsCard(JSONArray events, String ym, JSONArray batchEvents, YearMonth cur) {
         CardColumn totalCard = card(); totalCard.setOrientation(LinearLayout.VERTICAL);
-        totalCard.addView(text("本月到账与待收", 14, INK, true));
-        Map<String, Double> monthReceived = new TreeMap<>(), monthExpected = new TreeMap<>(); int expectedCount = 0, receivedCount = 0;
+        Map<String, Double> monthReceived = new TreeMap<>(), monthExpected = new TreeMap<>();
+        int expectedCount = 0, receivedCount = 0;
         for (int i = 0; i < events.length(); i++) {
-            JSONObject e = events.optJSONObject(i); if (e == null || !e.optString("pay_date").startsWith(ym)) continue;
+            JSONObject e = events.optJSONObject(i);
+            if (e == null || !e.optString("pay_date").startsWith(ym)) continue;
             boolean received = "received".equals(e.optString("status"));
             Map<String, Double> target = received ? monthReceived : monthExpected;
             String currency = e.optString("currency", "CNY");
-            double amount = received && !e.isNull("received_amount") ? e.optDouble("received_amount") : e.optDouble("total");
+            double amount = received && !e.isNull("received_amount")
+                    ? e.optDouble("received_amount") : e.optDouble("total");
             target.put(currency, target.getOrDefault(currency, 0d) + amount);
             if (received) receivedCount++; else expectedCount++;
         }
-        totalCard.addView(text("待到账 " + expectedCount + " 笔  ·  " + LedgerFormats.formatAmounts(monthExpected), 12, INK, true), margin(0, 6, 0, 0));
-        totalCard.addView(text("已到账 " + receivedCount + " 笔  ·  " + LedgerFormats.formatAmounts(monthReceived), 12, DIVIDEND, true), margin(0, 4, 0, 0));
-        totalCard.addView(text("待收使用税前记录金额；已到账优先用实收金额，旧记录未填实收时显示记录金额。各币种不合并换算。", 10, MUTED, false), margin(0, 5, 0, 0));
+
+        TextView title = text("本月到账与待收", 13, MUTED, false);
+        title.setPadding(dp(2), 0, 0, 0);
+        totalCard.addView(title);
+
+        // 主数字：待收金额，大字强调
+        LinearLayout expectedRow = row();
+        expectedRow.setGravity(Gravity.CENTER_VERTICAL);
+        expectedRow.setPadding(dp(2), dp(6), dp(2), 0);
+        expectedRow.addView(text("待到账", 13, INK, false));
+        TextView expectedAmount = text(LedgerFormats.formatAmounts(monthExpected), 20, INK, true);
+        expectedAmount.setPadding(dp(8), 0, 0, 0);
+        expectedRow.addView(expectedAmount, new LinearLayout.LayoutParams(0, -2, 1));
+        expectedRow.addView(text(expectedCount + " 笔", 11, MUTED, false));
+        totalCard.addView(expectedRow);
+
+        // 次数字：已到账，弱一档
+        LinearLayout receivedRow = row();
+        receivedRow.setGravity(Gravity.CENTER_VERTICAL);
+        receivedRow.setPadding(dp(2), dp(5), dp(2), 0);
+        ImageView receivedIcon = new ImageView(this);
+        receivedIcon.setImageResource(R.drawable.ic_payments_24);
+        receivedIcon.setColorFilter(DIVIDEND);
+        receivedRow.addView(receivedIcon, new LinearLayout.LayoutParams(dp(13), dp(13)));
+        TextView receivedLabel = text("已到账", 12, MUTED, false);
+        receivedLabel.setPadding(dp(6), 0, 0, 0);
+        receivedRow.addView(receivedLabel);
+        TextView receivedAmount = text(LedgerFormats.formatAmounts(monthReceived), 14, DIVIDEND, true);
+        receivedAmount.setPadding(dp(8), 0, 0, 0);
+        receivedRow.addView(receivedAmount, new LinearLayout.LayoutParams(0, -2, 1));
+        receivedRow.addView(text(receivedCount + " 笔", 11, MUTED, false));
+        totalCard.addView(receivedRow);
+
+        // 口径说明折叠：默认只留一行提示，点开才展开
+        TextView detailHint = text("金额口径说明", 10, MUTED, false);
+        detailHint.setPadding(dp(2), dp(7), 0, 0);
+        detailHint.setFocusable(true);
+        TextView detailBody = text("待收使用税前记录金额；已到账优先用实收金额，旧记录未填实收时显示记录金额。各币种不合并换算。", 10, MUTED, false);
+        detailBody.setVisibility(View.GONE);
+        detailBody.setPadding(dp(2), dp(3), 0, 0);
+        detailHint.setContentDescription("展开金额口径说明");
+        detailHint.setOnClickListener(v -> {
+            boolean show = detailBody.getVisibility() != View.VISIBLE;
+            detailBody.setVisibility(show ? View.VISIBLE : View.GONE);
+            detailHint.setText(show ? "收起金额口径说明" : "金额口径说明");
+            detailHint.setContentDescription(show ? "收起金额口径说明" : "展开金额口径说明");
+        });
+        totalCard.addView(detailHint);
+        totalCard.addView(detailBody);
+
         int pendingDueCount = pendingDueDividends(batchEvents, cur, LocalDate.now()).size();
         if (pendingDueCount > 0) {
             totalCard.addView(actionButton("批量确认已到账（" + pendingDueCount + " 笔）", false,
                     () -> confirmMarkReceivedBatch(batchEvents, cur)), margin(0, 8, 0, 0));
-            totalCard.addView(text("仅包括本月已到派息日的待收记录；请先核对券商流水。批量操作只更新到账状态，不填实收金额，也不调整持仓成本。", 10, MUTED, false), margin(0, 5, 0, 0));
+            TextView batchHint = text("仅含本月已到派息日的待收；批量操作只更新到账状态，不填实收金额，也不调整持仓成本。", 10, MUTED, false);
+            batchHint.setVisibility(View.GONE);
+            totalCard.addView(batchHint);
         }
-        content.addView(totalCard, margin(0, 0, 0, 7));
-        long dividendSyncAt = settingLong("dividend_sync_at", 0L); boolean syncStale = "true".equals(setting("dividend_sync_stale", "false"));
-        String freshness = dividendSyncAt > 0 ? "公开分红数据上次更新 " + timeLabel(dividendSyncAt) + (syncStale ? " · 含旧缓存" : "") : "公开分红数据尚未同步；新公告同步后显示在上方提醒。";
-        content.addView(text(freshness + "  ·  日期和金额以正式公告为准。", 10, MUTED, false), margin(2, 0, 0, 6));
+        return totalCard;
+    }
 
+    /** 7 列日历网格：三色圆点标记、今天/选中态、每格完整读屏描述。 */
+    private CardColumn calendarGridCard(YearMonth cur, Map<Integer, int[]> marks) {
         CardColumn cal = card(); cal.setOrientation(LinearLayout.VERTICAL); cal.setPadding(dp(8), dp(9), dp(8), dp(9));
         GridLayout grid = new GridLayout(this); grid.setColumnCount(7);
         for (String w : new String[]{"一", "二", "三", "四", "五", "六", "日"}) {
@@ -963,8 +1108,12 @@ private void showHome() {
             } else { cell.setMinimumHeight(dp(52)); cell.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO); }
             grid.addView(cell, p);
         }
-        cal.addView(grid); content.addView(cal, margin(0, 0, 0, 8));
+        cal.addView(grid);
+        return cal;
+    }
 
+    /** 选中日（或整月）的分红事件明细；无事件时给出下一步提示。 */
+    private void calendarEventList(YearMonth cur, String ym, JSONArray events) {
         String selectedDate = selectedDay == null ? "本月派息事件" : String.format(Locale.US, "%04d-%02d-%02d", cur.getYear(), cur.getMonthValue(), selectedDay);
         content.addView(text(selectedDate, 15, INK, true), margin(0, 2, 0, 6));
         boolean shown = false;
@@ -977,6 +1126,10 @@ private void showHome() {
             String emptyMessage = selectedDay == null ? "本月没有派息日期记录；登记日或除息日仍会在日历格中标记。" : "所选日期没有分红事件。可先更新公开数据，或手工录入；来源不可用时不影响账本。";
             content.addView(text(emptyMessage, 12, MUTED, false), margin(0, 6, 0, 12));
         }
+    }
+
+    /** 底部同步/手工录入操作行；大字或窄屏改为纵向排列并加高，避免文字被截断。 */
+    private LinearLayout calendarActionRow() {
         MaterialButton syncButton = actionButton("同步公开分红", true, this::syncPublicDividends);
         syncButton.setContentDescription("更新公开分红数据");
         syncButton.setIconResource(R.drawable.ic_refresh_24); syncButton.setIconSize(dp(18)); syncButton.setIconPadding(dp(6)); syncButton.setIconGravity(MaterialButton.ICON_GRAVITY_TEXT_START);
@@ -1008,7 +1161,7 @@ private void showHome() {
             syncRow.addView(gap, new LinearLayout.LayoutParams(dp(8), 1));
             syncRow.addView(manualButton, new LinearLayout.LayoutParams(0, actionHeight, 1));
         }
-        content.addView(syncRow, margin(0, 0, 0, 10));
+        return syncRow;
     }
 
     private CardColumn calendarControlPanel() {
@@ -1217,15 +1370,12 @@ private void showHome() {
         addDividendRow(e, allowMarkReceived, "派息日");
     }
     private void addDividendRow(JSONObject e, boolean allowMarkReceived, String eventKind) {
-        if (e == null) return; CardColumn item = card(); item.setOrientation(LinearLayout.VERTICAL);
+        if (e == null) return;
+        CardColumn item = card(); item.setOrientation(LinearLayout.VERTICAL);
         String dateValue = "登记日".equals(eventKind) ? e.optString("record_date") : "除息日".equals(eventKind) ? e.optString("ex_date") : e.optString("pay_date");
         String dataClass = e.optString("data_class", "manual"); boolean received = "received".equals(e.optString("status"));
         int badgeColor = "登记日".equals(eventKind) ? getColor(R.color.app_calendar_record_date) : "除息日".equals(eventKind) ? getColor(R.color.app_calendar_ex_date) : getColor(R.color.app_calendar_pay_date);
-        LinearLayout top = row(); top.setGravity(Gravity.CENTER_VERTICAL); TextView date = text(LedgerFormats.shortDate(dateValue), 12, badgeColor, true); date.setPadding(dp(7), dp(7), dp(7), dp(7)); date.setBackground(roundPx(PRIMARY_CONTAINER, dimen(R.dimen.ds_event_badge_radius), 0, 0)); top.addView(date);
-        LinearLayout desc = new LinearLayout(this); desc.setOrientation(LinearLayout.VERTICAL); desc.setPadding(dp(9), 0, 0, 0); desc.addView(text(e.optString("holding_name"), 13, INK, true));
-        String statusLabel = DividendCalendarRules.statusLabel(dataClass, e.optString("status"));
-        String sourceLabel = "manual".equals(e.optString("source", "manual")) ? "手工录入" : e.optString("source", "");
-        desc.addView(text(sourceLabel + " · " + eventKind + " · " + statusLabel + (e.optString("note").isEmpty() ? "" : " · " + e.optString("note")), 10, MUTED, false), margin(0, 2, 0, 0)); top.addView(desc, new LinearLayout.LayoutParams(0, -2, 1)); item.addView(top);
+
         double gross = e.optDouble("total"); String curr = e.optString("currency", "CNY");
         boolean taxKnown = e.optInt("tax_known") == 1; double taxRate = clampRate(e.optDouble("tax_rate"));
         if ("A股".equals(e.optString("holding_market"))) {
@@ -1251,8 +1401,81 @@ private void showHome() {
         String perShare = LedgerFormats.amount(curr, e.optDouble("amount_per_share"));
         String payDate = e.optString("pay_date_estimated").equals("1") || e.optInt("pay_date_estimated") == 1 ? "约 " : "";
         String amountLabel = received ? (actualKnown ? "实际到账 " : "到账记录额 ") + LedgerFormats.amount(curr, actual) : "预计记录额 " + LedgerFormats.amount(curr, gross);
-        item.addView(text("每股 " + perShare + "  ·  登记数量 " + quantityText + "  ·  " + amountLabel, 11, INK, true), margin(0, 8, 0, 0));
-        item.addView(text("派息日 " + payDate + LedgerFormats.shortDate(e.optString("pay_date")) + "  ·  " + (taxKnown ? "税后情景 " + LedgerFormats.amount(curr, net) : "税务状态未知，暂不估税（不等于免税）"), 10, MUTED, false), margin(0, 4, 0, 0));
+
+        // 左侧色条标记事件类型（登记/除息/派息），一眼分辨
+        LinearLayout head = row(); head.setGravity(Gravity.CENTER_VERTICAL);
+        View accentBar = new View(this);
+        accentBar.setBackground(roundPx(badgeColor, dp(1.5f), 0, 0));
+        LinearLayout.LayoutParams barParams = new LinearLayout.LayoutParams(dp(3), dp(34));
+        barParams.setMargins(0, 0, dp(9), 0);
+        head.addView(accentBar, barParams);
+
+        LinearLayout titleBox = new LinearLayout(this); titleBox.setOrientation(LinearLayout.VERTICAL);
+        // 第一行：证券名称，主信息用最大字号
+        LinearLayout nameRow = row(); nameRow.setGravity(Gravity.CENTER_VERTICAL);
+        TextView name = text(e.optString("holding_name"), 14, INK, true);
+        nameRow.addView(name);
+        // 代码用小字弱色跟在名称后，不抢主信息
+        String code = e.optString("holding_code", "");
+        if (!code.isEmpty()) {
+            TextView codeView = text(code, 10, MUTED, false);
+            codeView.setPadding(dp(6), dp(1), 0, 0);
+            nameRow.addView(codeView);
+        }
+        // 类型标签用 market 字段（A股/港股/美股/基金/ETF/其他）。数据库没有独立的
+        // category 列，之前想当然写了 holding_category 会永远为空。
+        String category = e.optString("holding_market", "");
+        if (!category.isEmpty()) {
+            TextView tag = text(category, 9, badgeColor, false);
+            tag.setPadding(dp(5), dp(1), dp(5), dp(1));
+            tag.setBackground(roundPx(PRIMARY_CONTAINER, dp(3), 0, 0));
+            LinearLayout.LayoutParams tagParams = new LinearLayout.LayoutParams(-2, -2);
+            tagParams.setMargins(dp(6), 0, 0, 0);
+            nameRow.addView(tag, tagParams);
+        }
+        titleBox.addView(nameRow);
+        // 第二行：日期 + 类型，弱色小字
+        titleBox.addView(text(LedgerFormats.shortDate(dateValue) + "  " + eventKind
+                + (received ? "  ·  已到账" : ""), 10, MUTED, false), margin(0, 2, 0, 0));
+        head.addView(titleBox, new LinearLayout.LayoutParams(0, -2, 1));
+
+        // 右侧：金额，主数字强调；未到账用弱一档颜色区分
+        LinearLayout amountBox = new LinearLayout(this); amountBox.setOrientation(LinearLayout.VERTICAL);
+        amountBox.setGravity(Gravity.END);
+        TextView mainAmount = text(LedgerFormats.amount(curr, received ? actual : gross), 16, received ? DIVIDEND : INK, true);
+        mainAmount.setGravity(Gravity.END);
+        amountBox.addView(mainAmount);
+        TextView amountHint = text(received ? "已到账" : "预计", 10, MUTED, false);
+        amountHint.setGravity(Gravity.END);
+        amountBox.addView(amountHint);
+        head.addView(amountBox);
+        item.addView(head);
+
+        // 明细折叠：每份派息/登记数量/税后情景，默认收起，点开才看
+        TextView detailHint = text("详情", 10, MUTED, false);
+        detailHint.setPadding(dp(12), dp(8), 0, 0);
+        detailHint.setFocusable(true);
+        LinearLayout detailBox = new LinearLayout(this);
+        detailBox.setOrientation(LinearLayout.VERTICAL);
+        detailBox.setVisibility(View.GONE);
+        detailBox.setPadding(dp(12), 0, 0, 0);
+        detailBox.addView(text("每份派息 " + perShare + "  ·  登记数量 " + quantityText, 11, INK, true), margin(0, 6, 0, 0));
+        detailBox.addView(text("派息日 " + payDate + LedgerFormats.shortDate(e.optString("pay_date")), 10, MUTED, false), margin(0, 3, 0, 0));
+        detailBox.addView(text(taxKnown ? "税后情景 " + LedgerFormats.amount(curr, net) : "税务状态未知，暂不估税（不等于免税）", 10, MUTED, false), margin(0, 3, 0, 0));
+        String sourceLabel = "manual".equals(e.optString("source", "manual")) ? "手工录入" : e.optString("source", "");
+        String statusLabel = DividendCalendarRules.statusLabel(dataClass, e.optString("status"));
+        String note = e.optString("note");
+        detailBox.addView(text("来源 " + sourceLabel + "  ·  " + statusLabel + (note.isEmpty() ? "" : "  ·  " + note), 10, MUTED, false), margin(0, 3, 0, 0));
+        detailHint.setContentDescription("展开分红详情");
+        detailHint.setOnClickListener(v -> {
+            boolean show = detailBox.getVisibility() != View.VISIBLE;
+            detailBox.setVisibility(show ? View.VISIBLE : View.GONE);
+            detailHint.setText(show ? "收起详情" : "详情");
+            detailHint.setContentDescription(show ? "收起分红详情" : "展开分红详情");
+        });
+        item.addView(detailHint);
+        item.addView(detailBox);
+
         content.addView(item, margin(0, 4, 0, 4));
         if (allowMarkReceived && !received) { content.addView(actionButton("确认已到账", false, () -> confirmMarkReceived(e)), margin(62, 0, 0, 7)); }
         else if (allowMarkReceived && received && !actualKnown) { content.addView(actionButton("补录实际到账金额", false, () -> confirmMarkReceived(e)), margin(62, 0, 0, 7)); }

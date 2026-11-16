@@ -306,7 +306,7 @@ final class LedgerDatabase extends SQLiteOpenHelper {
     }
     JSONArray dividendsInYear(long accountId, int year) {
         String yearValue = String.format(java.util.Locale.ROOT, "%04d", year);
-        String sql = "SELECT d.*,h.name AS holding_name,h.code AS holding_code FROM dividends d JOIN holdings h ON h._id=d.holding_id WHERE substr(d.pay_date,1,4)=?";
+        String sql = "SELECT d.*,h.name AS holding_name,h.code AS holding_code,h.market AS holding_market FROM dividends d JOIN holdings h ON h._id=d.holding_id WHERE substr(d.pay_date,1,4)=?";
         if (accountId > 0) return query(sql + " AND d.account_id=? ORDER BY d.pay_date", new String[]{yearValue, String.valueOf(accountId)});
         return query(sql + " ORDER BY d.pay_date", new String[]{yearValue});
     }
