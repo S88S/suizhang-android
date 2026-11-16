@@ -82,8 +82,8 @@ require("行情请求分批，不再把所有代码拼进一个 URL",
 require("User-Agent 版本号不再停在 1.3，且与 Gradle 版本一致",
         "APP_VERSION" in client
         and 'Suizhang-Android/" + APP_VERSION' in client
-        and 'APP_VERSION = "1.4.11"' in client
-        and "versionName '1.4.11'" in gradle)
+        and 'APP_VERSION = "1.4.12"' in client
+        and "versionName '1.4.12'" in gradle)
 require("HTTP 错误带上响应体片段，不再只有一个状态码",
         "errorBody(connection)" in client and "getErrorStream()" in client)
 require("连接禁用缓存", "setUseCaches(false)" in client)

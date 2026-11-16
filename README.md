@@ -1,6 +1,6 @@
 # 穗账 Android
 
-**当前源码：1.4.11-debug（versionCode 25）**。本版让单笔交易与分红可以编辑、可以删除——此前录错一笔只能删掉整个持仓重建。为此把持仓成本从「逐笔累加」改为「从期初检查点重放全部历史」，数据库 schema 由 4 升到 5 并新增 `opening_cost` 列，升级时按现有数据回填、不改动任何持仓的成本。界面延续暖麦金/炭灰与可选总览指标，行情缺失按原因分流、表单逐字段报错。原有 Excel `.xlsx` 完整账本工作簿和旧版 JSON 导入兼容保持不变。导入有明确的全量替换确认和事务校验，工作簿不会自动上传。包名 `cn.suizhang.ledger.debug`、最低 Android 10/API 29。**公开仓库只同步源码和文档，不包含 APK 或用户私有账本数据。**公式与税务边界见 [`FORMULA_ALIGNMENT_1.4.3.md`](FORMULA_ALIGNMENT_1.4.3.md)，升级说明见 [`UPGRADE_1.4.11.md`](UPGRADE_1.4.11.md)，设计准则见 [`DESIGN.md`](DESIGN.md)，已知问题见 [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md)。
+**当前源码：1.4.12（versionCode 26）**。本版不新增业务功能，是对三份独立评审（架构 / 安全工程 / 整体评估）的整改：修掉建仓日时区截断、负实收金额崩溃、导入字段白名单缺失、数据库降级未拒绝、公开分红写入非原子、导出一致性快照缺失、手工分红登记数量、加权均价重复实现与有限性校验、分红预测 2100 年后年份识别等问题，并为通知加上锁屏隐藏；「有意不改」的项在 [`UPGRADE_1.4.12.md`](UPGRADE_1.4.12.md) 逐条说明理由。数据库 schema 保持 **5**，无新迁移。上一版 1.4.11 让单笔交易与分红可以编辑、删除，并把持仓成本从「逐笔累加」改为「从期初检查点重放全部历史」（`CostReplay`），新增 `opening_cost` 并由现有数据回填、不改动任何持仓的成本。界面延续暖麦金/炭灰与可选总览指标，行情缺失按原因分流、表单逐字段报错。原有 Excel `.xlsx` 完整账本工作簿和旧版 JSON 导入兼容保持不变。导入有明确的全量替换确认和事务校验，工作簿不会自动上传。包名 `cn.suizhang.ledger.debug`、最低 Android 10/API 29。**公开仓库只同步源码和文档，不包含 APK 或用户私有账本数据。**公式与税务边界见 [`FORMULA_ALIGNMENT_1.4.3.md`](FORMULA_ALIGNMENT_1.4.3.md)，升级说明见 [`UPGRADE_1.4.12.md`](UPGRADE_1.4.12.md)，设计准则见 [`DESIGN.md`](DESIGN.md)，已知问题见 [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md)。
 
 ## 主要功能
 
@@ -57,12 +57,16 @@ SQLite schema 从 3 升至 5：4 新增持仓成本算法字段（默认 `weight
 
 ## 依赖和许可
 
+**本项目自有代码使用 MIT 许可**，全文见 [`LICENSE`](LICENSE)。可以自由使用、修改、商用和再分发，保留版权与许可声明即可，不提供任何担保。
+
+MIT 只覆盖本项目自有代码。下列第三方组件各自沿用其上游许可，不因本项目的 MIT 许可而改变：
+
 - HiMiuix 子模块沿用其 LGPL-2.1 源码/许可。
 - Material Components Android 1.14.0 使用 Apache-2.0。
 - 本地 Material Icons VectorDrawable（含日历、导航、账户和操作图标）使用 Apache-2.0；源码与 APK 均随附完整许可文本。
 - Google ML Kit 中文文字识别使用 `com.google.mlkit:text-recognition-chinese:16.0.1` bundled model；请遵守 Google ML Kit 服务条款。该本地模型增加 APK 体积。
 
-来源、版本、完整开源许可证和 ML Kit 官方条款说明见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
+来源、版本、完整开源许可证和 ML Kit 官方条款说明见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。自有代码与第三方组件的许可边界见 [`LICENSE`](LICENSE) 末节。
 
 ## 构建与验证
 
@@ -92,7 +96,7 @@ python3 scripts/test-calendar-redesign.py
 python3 scripts/test-defensive-guards.py
 ```
 
-说明：`testDebugUnitTest` 会执行 `app/src/test` 下的 JUnit 源（1.4.11 为 6 个类 / 39 个用例，全部通过）；上面列出的项目自带回归脚本覆盖 JUnit 到不了的部分——解析、隐私、界面不变量与源码级守卫。另有 5 个 `scripts/test-*.sh` 编译并运行 `scripts/` 下的纯逻辑 Java 套件，需要在 PATH 上有 `javac`；1.4.11 新增的 `test-cost-replay.sh` 会连带执行 `test-cost-replay.py`。
+说明：`testDebugUnitTest` 会执行 `app/src/test` 下的 JUnit 源（1.4.12 为 6 个类 / 42 个用例，全部通过）；上面列出的项目自带回归脚本覆盖 JUnit 到不了的部分——解析、隐私、界面不变量与源码级守卫。另有 5 个 `scripts/test-*.sh` 编译并运行 `scripts/` 下的纯逻辑 Java 套件，需要在 PATH 上有 `javac`；1.4.11 新增的 `test-cost-replay.sh` 会连带执行 `test-cost-replay.py`。
 
 1.4.11 新增交易/分红编辑与删除的成本重算回归：`scripts/CostReplayTest.java` 用真实 `FinanceMath` 验证三种成本法各 4000 组事件——正向重放与增量维护一致、反向回推期初后重放仍一致；`scripts/test-cost-replay.py`（41 条）从源码提取真实 SQL 在内存 SQLite 上复跑，并用 Python 独立重实现重放与回推公式，覆盖 schema 5 迁移回填、四个增删改方法各自调用重放、`received_amount IS NOT NULL` 判据与同日次序稳定性。已做变异验证，12 处源码改动全部被捕获。
 
