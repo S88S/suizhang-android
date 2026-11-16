@@ -80,13 +80,18 @@ require("当前重放量与账面数量不一致时拒绝", fixture(0, "", [("�
 known_method = main[main.index("private boolean taxEstimateKnown("):main.index("private Map<String, Double> estimatedIncomeByCurrency(")]
 rate_method = main[main.index("private double effectiveTaxRate("):main.index("private boolean taxEstimateKnown(")]
 coverage_method = db[db.index("boolean hasCompleteTaxLotCoverage("):db.index("private static final class TaxLot", db.index("boolean hasCompleteTaxLotCoverage("))]
-require("A 股自动税务已知判断使用覆盖 API 而非任意非空批次", "db.hasCompleteTaxLotCoverage(" in known_method and "taxLotsAt(" not in known_method)
-require("有效税率加权前再次要求完整覆盖，未知时不给部分批次税率", "!taxEstimateKnown(h, taxDate)" in rate_method and "return 0d" in rate_method)
+rules = (root / "app/src/main/java/cn/suizhang/ledger/DividendTaxRules.java").read_text(encoding="utf-8")
+known_rule = rules[rules.index("static boolean estimateKnown("):rules.index("static double effectiveRate(")]
+rate_rule = rules[rules.index("static double effectiveRate("):rules.index("static double settingDouble(")]
+require("A 股自动税务已知判断使用覆盖 API 而非任意非空批次",
+        "hasCompleteTaxLotCoverage(" in known_rule and "taxLotsAt(" not in known_rule)
+require("有效税率加权前再次要求完整覆盖，未知时不给部分批次税率",
+        "!estimateKnown(" in rate_rule and "return 0d" in rate_rule)
 require("覆盖 API 按同日 estimatedQuantityAt 与 taxLotsAt 对账", "estimatedQuantityAt(holdingId, asOf.toString())" in coverage_method and "taxLotsAt(holdingId, asOf.toString())" in coverage_method and "hasCompleteTaxLotCoverage(datedLots, expectedQuantity, asOf)" in coverage_method)
-require("当前日还要求账面持仓 quantity 一致", "compareHoldingQuantity && !FinanceMath.sameShareQuantity(expectedQuantity, holdingQuantity)" in coverage_method and "date.equals(LocalDate.now())" in known_method)
+require("当前日还要求账面持仓 quantity 一致", "compareHoldingQuantity && !FinanceMath.sameShareQuantity(expectedQuantity, holdingQuantity)" in coverage_method and "date.equals(LocalDate.now())" in known_rule)
 require("未定日期的正数期初、非 ISO 日期和无效交易不会被忽略", "openingQuantity > 1e-8 && openingDate == null" in coverage_method and "strictIsoDate(tradeDate)" in coverage_method and "date == null || quantity <= 0d" in coverage_method)
 require("日期早于 opening checkpoint 的交易不被静默跳过", "date.isBefore(openingDate)" in coverage_method)
-require("税率按原始 Lot 加权公式不变，只对完整批次调用", "aShareRecordDateTaxRate(taxLots, date" in rate_method and "double rate = !recordDate.isAfter(lot.acquiredOn.plusMonths(1))" in math_src)
+require("税率按原始 Lot 加权公式不变，只对完整批次调用", "aShareRecordDateTaxRate(lots, date" in rate_rule and "double rate = !recordDate.isAfter(lot.acquiredOn.plusMonths(1))" in math_src)
 event_row = main[main.index("private void addDividendRow(JSONObject e, boolean allowMarkReceived, String eventKind)"):main.index("private void confirmMarkReceived(")]
 require("日历行渲染时按当前 A 股批次重新核验，旧存储 tax_known 不再作为自动税务结论", "taxEstimateKnown(taxHolding, recordDate)" in event_row and "taxRate = taxKnown ? effectiveTaxRate(taxHolding, recordDate) : 0d" in event_row)
 require("A 股自定义税率分红仍沿用事件已保存费率", 'taxHolding.put("tax_rate", e.optDouble("tax_rate", 0d))' in event_row)

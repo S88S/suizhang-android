@@ -2664,50 +2664,39 @@ private void showHome() {
     private String timeLabel(long time) { if (time <= 0) return "时间未知"; return java.time.format.DateTimeFormatter.ofPattern("M月d日 HH:mm", Locale.CHINA).withZone(java.time.ZoneId.systemDefault()).format(java.time.Instant.ofEpochMilli(time)); }
 
     private double effectiveTaxRate(JSONObject h, String asOf) {
-        if ("manual".equals(h.optString("tax_mode", "manual"))) return clampRate(h.optDouble("tax_rate"));
-        String market = h.optString("market");
-        if ("A股".equals(market)) {
-            String taxDate = asOf == null || asOf.trim().isEmpty() ? LocalDate.now().toString() : asOf.trim();
-            LocalDate date;
-            try { date = LocalDate.parse(taxDate); } catch (RuntimeException invalidDate) { return 0d; }
-            if (!date.toString().equals(taxDate) || !taxEstimateKnown(h, taxDate)) return 0d;
-            JSONArray lots = db.taxLotsAt(h.optLong("_id"), taxDate); ArrayList<FinanceMath.Lot> taxLots = new ArrayList<>();
-            for (int i = 0; i < lots.length(); i++) {
-                JSONObject lot = lots.optJSONObject(i); if (lot == null) return 0d;
-                double qty = lot.optDouble("quantity", Double.NaN); LocalDate opened = LedgerFormats.parseDate(lot.optString("opened_on")); if (opened == null) return 0d;
-                taxLots.add(new FinanceMath.Lot(qty, opened));
+        String manualRate = String.valueOf(h.optDouble("tax_rate"));
+        return DividendTaxRules.effectiveRate(taxRulesPort(), h.optString("market"),
+                h.optString("tax_mode", "manual"), manualRate,
+                h.optLong("_id"), asOf);
+    }
+
+    /** 把账本包成规则认的窄接口。规则不认 LedgerDatabase，只认这三件事。 */
+    private DividendTaxRules.Port taxRulesPort() {
+        return new DividendTaxRules.Port() {
+            @Override public String setting(String key, String fallback) {
+                return db.setting(key, fallback);
             }
-            // Clamp before the call, not after: aShareRecordDateTaxRate rejects out-of-range rates
-            // outright, and a hand-edited Excel settings sheet can put e.g. 5 into tax_a_short.
-            return clampRate(FinanceMath.aShareRecordDateTaxRate(taxLots, date,
-                    clampRate(settingDouble("tax_a_short", .2)),
-                    clampRate(settingDouble("tax_a_mid", .1)),
-                    clampRate(settingDouble("tax_a_long", 0))));
-        }
-        if ("港股".equals(market)) return "港股通".equals(setting("tax_hk_channel", "未确认")) ? .20d : 0d;
-        if ("美股".equals(market)) {
-            String status = setting("tax_us_status", "未确认");
-            if (status.startsWith("符合协定")) return .10d;
-            if (status.startsWith("不适用协定")) return .30d;
-            return 0d;
-        }
-        return 0d;
+            @Override public java.util.List<DividendTaxRules.RawLot> taxLotsAt(long holdingId, String date) {
+                JSONArray lots = db.taxLotsAt(holdingId, date);
+                java.util.List<DividendTaxRules.RawLot> out = new java.util.ArrayList<>();
+                for (int k = 0; k < lots.length(); k++) {
+                    JSONObject lot = lots.optJSONObject(k);
+                    if (lot == null) { out.add(null); continue; }
+                    out.add(new DividendTaxRules.RawLot(
+                            lot.optDouble("quantity", Double.NaN), lot.optString("opened_on")));
+                }
+                return out;
+            }
+            @Override public boolean hasCompleteTaxLotCoverage(long holdingId, String date,
+                                                               double holdingQuantity, boolean includeToday) {
+                return db.hasCompleteTaxLotCoverage(holdingId, date, holdingQuantity, includeToday);
+            }
+        };
     }
     private boolean taxEstimateKnown(JSONObject h, String asOf) {
-        if ("manual".equals(h.optString("tax_mode", "manual"))) return true;
-        String market = h.optString("market");
-        if ("A股".equals(market)) {
-            if (!setting("tax_identity", "未确认").startsWith("中国内地个人")) return false;
-            String taxDate = asOf == null || asOf.trim().isEmpty() ? LocalDate.now().toString() : asOf.trim();
-            LocalDate date;
-            try { date = LocalDate.parse(taxDate); } catch (RuntimeException invalidDate) { return false; }
-            if (!date.toString().equals(taxDate)) return false;
-            return db.hasCompleteTaxLotCoverage(h.optLong("_id"), taxDate,
-                    h.optDouble("quantity", Double.NaN), date.equals(LocalDate.now()));
-        }
-        if ("港股".equals(market)) return "港股通".equals(setting("tax_hk_channel", "未确认"));
-        if ("美股".equals(market)) return !"未确认".equals(setting("tax_us_status", "未确认"));
-        return false;
+        return DividendTaxRules.estimateKnown(taxRulesPort(), h.optString("market"),
+                h.optString("tax_mode", "manual"), h.optLong("_id"),
+                h.optDouble("quantity", Double.NaN), asOf);
     }
     private Map<String, Double> estimatedIncomeByCurrency(boolean net) { Map<String, Double> sums = new TreeMap<>(); JSONArray hs = db.holdings(selectedAccount); for (int i = 0; i < hs.length(); i++) { JSONObject h = hs.optJSONObject(i); double value = annualOf(h, net); if (Double.isFinite(value) && value > 0d) { String c = h.optString("currency", "CNY"); sums.put(c, sums.getOrDefault(c, 0d) + value); } } return sums; }
     private double annualOf(JSONObject h, boolean net) { double gross = FinanceMath.annualDividend(h.optDouble("quantity"), h.optDouble("annual_dividend_per_unit")); if (!net) return gross; String today = LocalDate.now().toString(); if (!taxEstimateKnown(h, today)) return Double.NaN; return FinanceMath.afterTax(gross, clampRate(effectiveTaxRate(h, today))); }
