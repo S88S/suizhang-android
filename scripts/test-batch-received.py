@@ -86,7 +86,7 @@ require("日历按月统计已到期候选并在数量大于零时显示操作",
         and '"批量确认已到账（"' in calendar)
 require("日历批次确认只接收当前月候选，逐项展示日期、标的和记录金额",
         "pendingDueDividends(rows, targetMonth, LocalDate.now())" in confirm_calendar
-        and 'shortDate(row.optString("pay_date"))' in confirm_calendar
+        and 'LedgerFormats.shortDate(row.optString("pay_date"))' in confirm_calendar
         and 'row.optDouble("total")' in confirm_calendar)
 require("日历确认提示区分记录金额与实收金额，并说明成本不变",
         "并非券商实收金额" in confirm_calendar and "不会填写实际到账金额或改动持仓成本" in confirm_calendar)

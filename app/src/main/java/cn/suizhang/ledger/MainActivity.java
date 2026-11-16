@@ -134,12 +134,6 @@ public class MainActivity extends AppCompatActivity {
     private Typeface appTypeface = Typeface.DEFAULT;
     // HALF_UP on purpose: DecimalFormat defaults to HALF_EVEN (banker's rounding), which rounds
     // 0.005 down and surprises people reading their own money.
-    private final DecimalFormat moneyFormat = halfUpMoneyFormat();
-    private static DecimalFormat halfUpMoneyFormat() {
-        DecimalFormat format = new DecimalFormat("#,##0.00");
-        format.setRoundingMode(RoundingMode.HALF_UP);
-        return format;
-    }
 
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -399,10 +393,10 @@ private void showHome() {
         heroTop.addView(overviewMetricSettingsButton(metricIds.size())); hero.addView(heroTop);
         addHeroDivider(hero);
         LinearLayout heading = row(); heading.addView(tokenText(LocalDate.now().getYear() + " 年预计分红", R.dimen.ds_type_body, HERO_MUTED, true), new LinearLayout.LayoutParams(0, -2, 1)); heading.addView(text("本地估算", 11, HERO_MUTED, false)); hero.addView(heading);
-        TextView annualValue = tokenText(hasEstimate ? formatAmounts(annual) : "暂无数据", R.dimen.ds_type_hero_metric,
+        TextView annualValue = tokenText(hasEstimate ? LedgerFormats.formatAmounts(annual) : "暂无数据", R.dimen.ds_type_hero_metric,
                 hasEstimate ? getColor(R.color.app_dividend_on_hero) : HERO_ON_SURFACE, true);
         annualValue.setFontFeatureSettings("tnum"); annualValue.setMaxLines(3); hero.addView(annualValue);
-        String estimateNote = hasEstimate ? "月均参考  " + formatAmounts(scaleMap(annual, 1d / 12d))
+        String estimateNote = hasEstimate ? "月均参考  " + LedgerFormats.formatAmounts(scaleMap(annual, 1d / 12d))
                 : hs.length() == 0 ? "添加持仓后显示估算；未知金额不按 ¥0 计入。" : "持仓分红暂无可用估算；未知金额不会按 ¥0 计入。";
         hero.addView(tokenText(estimateNote, R.dimen.ds_type_secondary, HERO_MUTED, false), margin(0, 4, 0, 0));
         if (hasEstimate) hero.addView(tokenText("按持仓数量与已录入/公开历史分红估算；币种分开展示，不换算，未来派息可能变化。", R.dimen.ds_type_metadata, HERO_MUTED, false), margin(0, 4, 0, 0));
@@ -555,7 +549,7 @@ private void showHome() {
         LinearLayout heading = row(); heading.setGravity(Gravity.CENTER_VERTICAL);
         heading.addView(text("预测年度分红", 11, HERO_MUTED, false), new LinearLayout.LayoutParams(0, -2, 1));
         preview.addView(heading);
-        TextView annualValue = tokenText(hasEstimate ? formatAmounts(annual) : "暂无数据", R.dimen.ds_type_hero_metric,
+        TextView annualValue = tokenText(hasEstimate ? LedgerFormats.formatAmounts(annual) : "暂无数据", R.dimen.ds_type_hero_metric,
                 hasEstimate ? getColor(R.color.app_dividend_on_hero) : HERO_ON_SURFACE, true);
         annualValue.setFontFeatureSettings("tnum"); annualValue.setMaxLines(3); preview.addView(annualValue);
         if (!order.isEmpty()) {
@@ -649,22 +643,22 @@ private void showHome() {
 
     private Map<String, String> homeMetricValues(JSONArray holdings, Map<String, Double> annual, Map<String, Double> costs) {
         Map<String, String> values = new HashMap<>();
-        values.put("cost_yield", formatPercentMap(costYieldByCurrency(annual, costs)));
-        values.put("market_yield", formatPercentMap(marketYieldByCurrency(holdings)));
+        values.put("cost_yield", LedgerFormats.formatPercentMap(LedgerFormats.costYieldByCurrency(annual, costs)));
+        values.put("market_yield", LedgerFormats.formatPercentMap(marketYieldByCurrency(holdings)));
         Map<String, Double> floating = floatingProfitByCurrency(holdings);
-        values.put("floating_profit", formatAmounts(floating));
+        values.put("floating_profit", LedgerFormats.formatAmounts(floating));
         Map<String, Double> netInvested = new TreeMap<>(); JSONArray flows = db.netInvestedByCurrency(selectedAccount);
         for (int i = 0; i < flows.length(); i++) { JSONObject row = flows.optJSONObject(i); if (row != null) netInvested.put(row.optString("currency", "CNY"), row.optDouble("total")); }
-        values.put("net_invested", netInvested.isEmpty() ? "暂无流水" : formatAmounts(netInvested));
+        values.put("net_invested", netInvested.isEmpty() ? "暂无流水" : LedgerFormats.formatAmounts(netInvested));
         int holdingCount = 0; for (int i = 0; i < holdings.length(); i++) { JSONObject h = holdings.optJSONObject(i); if (h != null && h.optDouble("quantity") > 0d) holdingCount++; }
         values.put("holding_count", holdingCount + " 只");
-        values.put("profit_rate", formatPercentMap(profitRateByCurrency(holdings)));
-        values.put("received_year", formatAmounts(receivedInYear(LocalDate.now().getYear())));
-        values.put("total_cost", formatAmounts(costs));
-        values.put("market_value", formatAmounts(marketValueByCurrency(holdings)));
-        values.put("monthly_forecast", formatAmounts(scaleMap(annual, 1d / 12d)));
-        values.put("daily_forecast", formatAmounts(scaleMap(annual, 1d / 365d)));
-        values.put("cumulative_received", formatAmounts(receivedAllTime()));
+        values.put("profit_rate", LedgerFormats.formatPercentMap(profitRateByCurrency(holdings)));
+        values.put("received_year", LedgerFormats.formatAmounts(receivedInYear(LocalDate.now().getYear())));
+        values.put("total_cost", LedgerFormats.formatAmounts(costs));
+        values.put("market_value", LedgerFormats.formatAmounts(marketValueByCurrency(holdings)));
+        values.put("monthly_forecast", LedgerFormats.formatAmounts(scaleMap(annual, 1d / 12d)));
+        values.put("daily_forecast", LedgerFormats.formatAmounts(scaleMap(annual, 1d / 365d)));
+        values.put("cumulative_received", LedgerFormats.formatAmounts(receivedAllTime()));
         return values;
     }
 
@@ -672,7 +666,7 @@ private void showHome() {
         LocalDate earliest = null, today = LocalDate.now();
         for (int i = 0; i < holdings.length(); i++) {
             JSONObject h = holdings.optJSONObject(i); if (h == null || h.optDouble("quantity") <= 0d) continue;
-            LocalDate date = parseDate(db.firstPurchaseDate(h.optLong("_id")));
+            LocalDate date = LedgerFormats.parseDate(db.firstPurchaseDate(h.optLong("_id")));
             if (date != null && !date.isAfter(today) && (earliest == null || date.isBefore(earliest))) earliest = date;
         }
         if (earliest == null) return holdings.length() == 0 ? "目前没有持仓" : "最早建仓日期待核对";
@@ -680,13 +674,6 @@ private void showHome() {
         return "首笔买入至今 · " + (years > 0 ? years + " 年 " : "") + remainder + " 天";
     }
 
-    private Map<String, Double> costYieldByCurrency(Map<String, Double> annual, Map<String, Double> costs) {
-        Map<String, Double> values = new TreeMap<>();
-        for (String currency : costs.keySet()) if (annual.containsKey(currency)) {
-            double value = FinanceMath.costYield(annual.get(currency), costs.get(currency)); if (Double.isFinite(value)) values.put(currency, value);
-        }
-        return values;
-    }
 
     private Map<String, Double> marketYieldByCurrency(JSONArray holdings) {
         Map<String, Double> annual = new TreeMap<>(), marketValues = new TreeMap<>();
@@ -730,9 +717,9 @@ private void showHome() {
         heading.addView(text(holding.optString("name"), 14, INK, true), new LinearLayout.LayoutParams(0, -2, 1));
         heading.addView(text(holding.optString("market") + " · " + holding.optString("currency"), 10, MUTED, false));
         item.addView(heading);
-        item.addView(text(gross > 0d ? amount(holding.optString("currency"), gross) + "/年" : "暂无数据", 15, gross > 0d ? DIVIDEND : MUTED, true), margin(0, 4, 0, 1));
+        item.addView(text(gross > 0d ? LedgerFormats.amount(holding.optString("currency"), gross) + "/年" : "暂无数据", 15, gross > 0d ? DIVIDEND : MUTED, true), margin(0, 4, 0, 1));
         String detail = "持有 " + compact(quantity) + " 份 · " + forecastSourceLabel(holding);
-        if (gross > 0d && cost > 0d) detail += " · YoC " + percent(gross / cost);
+        if (gross > 0d && cost > 0d) detail += " · YoC " + LedgerFormats.percent(gross / cost);
         item.addView(text(detail, 11, MUTED, false));
         content.addView(item, margin(0, 3, 0, 6));
     }
@@ -797,7 +784,7 @@ private void showHome() {
             LinearLayout top = row(); top.setGravity(Gravity.CENTER_VERTICAL); top.addView(text(h.optString("name"), 16, INK, true), new LinearLayout.LayoutParams(0, -2, 1));
             TextView tag = text(h.optString("market") + " · " + h.optString("currency"), 10, ACCENT, true); tag.setPadding(dp(8), dp(5), dp(8), dp(5)); tag.setBackground(roundPx(PRIMARY_CONTAINER, dimen(R.dimen.ds_market_badge_radius), 0, 0)); top.addView(tag); item.addView(top);
             String code = h.optString("code");
-            String quoteLine = quote == null ? quoteUnavailableReason(h) : amount(quote.currency, quote.price) + "  " + marketMoveLabel(quote.changePercent) + (quote.stale ? " · 缓存" : "");
+            String quoteLine = quote == null ? quoteUnavailableReason(h) : LedgerFormats.amount(quote.currency, quote.price) + "  " + marketMoveLabel(quote.changePercent) + (quote.stale ? " · 缓存" : "");
             item.addView(text((code.isEmpty() ? "未填写代码" : code) + " · " + h.optString("account_name") + "   " + quoteLine + (quote == null ? "" : " · 腾讯截至 " + timeLabel(quote.updatedAt)), 11, quote == null ? MUTED : marketMoveColor(quote.changePercent), false), margin(0, 4, 0, 9));
             double q = h.optDouble("quantity"), unitCost = h.optDouble("cost"), gross = annualOf(h, false), invested = q * unitCost;
             String currency = h.optString("currency", "CNY");
@@ -808,19 +795,19 @@ private void showHome() {
             double costYield = FinanceMath.costYield(gross, invested);
             double positionWeight = FinanceMath.positionWeight(marketValue, currencyMarketValues.getOrDefault(currency, 0d));
             LinearLayout stats = new LinearLayout(this); stats.setOrientation(LinearLayout.VERTICAL); stats.setBaselineAligned(false);
-            stats.addView(metricPair("持有数量", compact(q), "市值", amount(currency, marketValue)));
-            stats.addView(metricPair("持仓成本", amount(currency, invested), "昨收息率", Double.isFinite(currentYield) ? percent(currentYield) : "—"), margin(0, 8, 0, 0));
+            stats.addView(metricPair("持有数量", compact(q), "市值", LedgerFormats.amount(currency, marketValue)));
+            stats.addView(metricPair("持仓成本", LedgerFormats.amount(currency, invested), "昨收息率", Double.isFinite(currentYield) ? LedgerFormats.percent(currentYield) : "—"), margin(0, 8, 0, 0));
             LinearLayout performance = row(); performance.setBaselineAligned(false);
-            performance.addView(metric("浮动盈亏", quote == null ? "—" : amount(currency, floating), quote == null ? INK : (floating >= 0 ? MARKET_UP : MARKET_DOWN)), new LinearLayout.LayoutParams(0, -2, 1));
-            performance.addView(metric("盈亏率", Double.isFinite(profitRate) ? percent(profitRate) : "—", quote == null ? INK : (floating >= 0 ? MARKET_UP : MARKET_DOWN)), new LinearLayout.LayoutParams(0, -2, 1));
+            performance.addView(metric("浮动盈亏", quote == null ? "—" : LedgerFormats.amount(currency, floating), quote == null ? INK : (floating >= 0 ? MARKET_UP : MARKET_DOWN)), new LinearLayout.LayoutParams(0, -2, 1));
+            performance.addView(metric("盈亏率", Double.isFinite(profitRate) ? LedgerFormats.percent(profitRate) : "—", quote == null ? INK : (floating >= 0 ? MARKET_UP : MARKET_DOWN)), new LinearLayout.LayoutParams(0, -2, 1));
             stats.addView(performance, margin(0, 8, 0, 0));
-            stats.addView(metricPair("同币种占比", Double.isFinite(positionWeight) ? percent(positionWeight) : "—", "成本息率", Double.isFinite(costYield) ? percent(costYield) : "—"), margin(0, 8, 0, 0));
+            stats.addView(metricPair("同币种占比", Double.isFinite(positionWeight) ? LedgerFormats.percent(positionWeight) : "—", "成本息率", Double.isFinite(costYield) ? LedgerFormats.percent(costYield) : "—"), margin(0, 8, 0, 0));
             item.addView(stats);
             double perUnit = h.optDouble("annual_dividend_per_unit");
-            item.addView(text("预计年分红  " + (gross > 0d ? amount(currency, gross) : "暂无数据"), 12, gross > 0d ? DIVIDEND : MUTED, true), margin(0, 9, 0, 2));
-            LocalDate firstBuy = parseDate(db.firstPurchaseDate(h.optLong("_id"))); long heldDays = FinanceMath.holdingDays(firstBuy, LocalDate.now());
+            item.addView(text("预计年分红  " + (gross > 0d ? LedgerFormats.amount(currency, gross) : "暂无数据"), 12, gross > 0d ? DIVIDEND : MUTED, true), margin(0, 9, 0, 2));
+            LocalDate firstBuy = LedgerFormats.parseDate(db.firstPurchaseDate(h.optLong("_id"))); long heldDays = FinanceMath.holdingDays(firstBuy, LocalDate.now());
             String holdingDuration = heldDays < 0 ? "持股天数待核对" : "首买至今 " + heldDays + " 天";
-            item.addView(text((perUnit > 0d ? "每份年分红 " + amount(currency, perUnit) + " · " : "") + forecastSourceLabel(h) + " · " + holdingDuration + " · YoC " + (Double.isFinite(costYield) ? percent(costYield) : "—") + " · 报价 " + (quote == null ? "无" : "截至 " + timeLabel(quote.updatedAt)), 11, MUTED, false), margin(0, 3, 0, 10));
+            item.addView(text((perUnit > 0d ? "每份年分红 " + LedgerFormats.amount(currency, perUnit) + " · " : "") + forecastSourceLabel(h) + " · " + holdingDuration + " · YoC " + (Double.isFinite(costYield) ? LedgerFormats.percent(costYield) : "—") + " · 报价 " + (quote == null ? "无" : "截至 " + timeLabel(quote.updatedAt)), 11, MUTED, false), margin(0, 3, 0, 10));
             LinearLayout buttons = row(); buttons.addView(actionButton("编辑", false, () -> showHoldingEditor(h, null)), new LinearLayout.LayoutParams(0, dp(48), 1));
             buttons.addView(new View(this), new LinearLayout.LayoutParams(dp(8), 1)); buttons.addView(actionButton("更多", false, () -> holdingMenu(h)), new LinearLayout.LayoutParams(0, dp(48), 1));
             item.addView(buttons); item.setOnLongClickListener(v -> { holdingMenu(h); return true; }); content.addView(item, margin(0, 5, 0, 8));
@@ -888,10 +875,10 @@ private void showHome() {
         announcedHead.addView(text("已公告的持仓分红", 14, INK, true), new LinearLayout.LayoutParams(0, -2, 1));
         announcedHead.addView(text(announced.length() + " 笔", 11, ACCENT, true)); announcedCard.addView(announcedHead);
         if (announced.length() > 0) {
-            announcedCard.addView(text("预计待收  " + formatAmounts(announcedAmounts), 14, DIVIDEND, true), margin(0, 5, 0, 0));
+            announcedCard.addView(text("预计待收  " + LedgerFormats.formatAmounts(announcedAmounts), 14, DIVIDEND, true), margin(0, 5, 0, 0));
             announcedCard.addView(text("仅汇总已公告事件的记录金额，按币种分别展示；实际方案与到账以正式公告及券商记录为准。", 10, MUTED, false), margin(0, 4, 0, 0));
-            JSONObject first = announced.optJSONObject(0); LocalDate firstDate = first == null ? null : parseDate(first.optString("pay_date"));
-            announcedCard.setContentDescription("有 " + announced.length() + " 笔已公告的预期分红，预计待收 " + formatAmounts(announcedAmounts) + (firstDate == null ? "" : "；点按跳转到最早派息日"));
+            JSONObject first = announced.optJSONObject(0); LocalDate firstDate = first == null ? null : LedgerFormats.parseDate(first.optString("pay_date"));
+            announcedCard.setContentDescription("有 " + announced.length() + " 笔已公告的预期分红，预计待收 " + LedgerFormats.formatAmounts(announcedAmounts) + (firstDate == null ? "" : "；点按跳转到最早派息日"));
             announcedCard.setOnClickListener(v -> {
                 if (firstDate != null) { year = firstDate.getYear(); month = firstDate.getMonthValue(); selectedDay = firstDate.getDayOfMonth(); calendarYearView = false; render(); }
             });
@@ -929,8 +916,8 @@ private void showHome() {
             target.put(currency, target.getOrDefault(currency, 0d) + amount);
             if (received) receivedCount++; else expectedCount++;
         }
-        totalCard.addView(text("待到账 " + expectedCount + " 笔  ·  " + formatAmounts(monthExpected), 12, INK, true), margin(0, 6, 0, 0));
-        totalCard.addView(text("已到账 " + receivedCount + " 笔  ·  " + formatAmounts(monthReceived), 12, DIVIDEND, true), margin(0, 4, 0, 0));
+        totalCard.addView(text("待到账 " + expectedCount + " 笔  ·  " + LedgerFormats.formatAmounts(monthExpected), 12, INK, true), margin(0, 6, 0, 0));
+        totalCard.addView(text("已到账 " + receivedCount + " 笔  ·  " + LedgerFormats.formatAmounts(monthReceived), 12, DIVIDEND, true), margin(0, 4, 0, 0));
         totalCard.addView(text("待收使用税前记录金额；已到账优先用实收金额，旧记录未填实收时显示记录金额。各币种不合并换算。", 10, MUTED, false), margin(0, 5, 0, 0));
         int pendingDueCount = pendingDueDividends(batchEvents, cur, LocalDate.now()).size();
         if (pendingDueCount > 0) {
@@ -1102,8 +1089,8 @@ private void showHome() {
         }
         CalendarYearSummary summary = CalendarYearSummary.calculate(year, source);
         CardColumn overview = card(); overview.setOrientation(LinearLayout.VERTICAL); overview.addView(text("年度收息概况", 15, INK, true));
-        overview.addView(text("已到账  " + formatAmounts(summary.receivedByCurrency()), 12, DIVIDEND, true), margin(0, 8, 0, 0));
-        overview.addView(text("预计 / 待收  " + formatAmounts(summary.estimatedByCurrency()), 12, INK, true), margin(0, 4, 0, 0));
+        overview.addView(text("已到账  " + LedgerFormats.formatAmounts(summary.receivedByCurrency()), 12, DIVIDEND, true), margin(0, 8, 0, 0));
+        overview.addView(text("预计 / 待收  " + LedgerFormats.formatAmounts(summary.estimatedByCurrency()), 12, INK, true), margin(0, 4, 0, 0));
         overview.addView(text("按币种分别统计，不做汇率换算；未到账事件保留预计口径，正式公告、历史推算与手工记录请在月历查看。", 10, MUTED, false), margin(0, 6, 0, 0));
         int pendingCount = countPendingReceived(rows);
         if (pendingCount > 0) {
@@ -1137,7 +1124,7 @@ private void showHome() {
         } else {
             for (String currency : monthSummary.currencyCodes()) {
                 CalendarYearSummary.Amounts amounts = monthSummary.amounts(currency);
-                monthCard.addView(text(currency + "  已到账 " + amount(currency, amounts.received) + "  ·  预计 / 待收 " + amount(currency, amounts.estimated), 10, INK, false), margin(0, 1, 0, 0));
+                monthCard.addView(text(currency + "  已到账 " + LedgerFormats.amount(currency, amounts.received) + "  ·  预计 / 待收 " + LedgerFormats.amount(currency, amounts.estimated), 10, INK, false), margin(0, 1, 0, 0));
                 monthCard.addView(calendarAmountBar(amounts, summary.maxMonthlyTotal(currency)), margin(0, 3, 0, 4));
             }
         }
@@ -1176,7 +1163,7 @@ private void showHome() {
             if (!DividendBatchRules.isEligible(row.optString("status"), payDate, asOf)) continue;
             ids.add(row.optLong("_id"));
             String label = row.optString("holding_name", row.optString("code", "持仓"));
-            names.add(label + " " + amount(row.optString("currency", "CNY"), row.optDouble("total")) + " · 派息日 " + shortDate(payDate));
+            names.add(label + " " + LedgerFormats.amount(row.optString("currency", "CNY"), row.optDouble("total")) + " · 派息日 " + LedgerFormats.shortDate(payDate));
         }
         if (ids.isEmpty()) { toast("没有已到派息日且待确认的记录"); return; }
         LinearLayout f = form();
@@ -1213,7 +1200,7 @@ private void showHome() {
         ArrayList<String> parts = new ArrayList<>();
         for (String currency : monthSummary.currencyCodes()) {
             CalendarYearSummary.Amounts amounts = monthSummary.amounts(currency);
-            parts.add(currency + "已到账" + amount(currency, amounts.received) + "，预计或待收" + amount(currency, amounts.estimated));
+            parts.add(currency + "已到账" + LedgerFormats.amount(currency, amounts.received) + "，预计或待收" + LedgerFormats.amount(currency, amounts.estimated));
         }
         return parts.isEmpty() ? "暂无收息金额" : android.text.TextUtils.join("；", parts);
     }
@@ -1234,7 +1221,7 @@ private void showHome() {
         String dateValue = "登记日".equals(eventKind) ? e.optString("record_date") : "除息日".equals(eventKind) ? e.optString("ex_date") : e.optString("pay_date");
         String dataClass = e.optString("data_class", "manual"); boolean received = "received".equals(e.optString("status"));
         int badgeColor = "登记日".equals(eventKind) ? getColor(R.color.app_calendar_record_date) : "除息日".equals(eventKind) ? getColor(R.color.app_calendar_ex_date) : getColor(R.color.app_calendar_pay_date);
-        LinearLayout top = row(); top.setGravity(Gravity.CENTER_VERTICAL); TextView date = text(shortDate(dateValue), 12, badgeColor, true); date.setPadding(dp(7), dp(7), dp(7), dp(7)); date.setBackground(roundPx(PRIMARY_CONTAINER, dimen(R.dimen.ds_event_badge_radius), 0, 0)); top.addView(date);
+        LinearLayout top = row(); top.setGravity(Gravity.CENTER_VERTICAL); TextView date = text(LedgerFormats.shortDate(dateValue), 12, badgeColor, true); date.setPadding(dp(7), dp(7), dp(7), dp(7)); date.setBackground(roundPx(PRIMARY_CONTAINER, dimen(R.dimen.ds_event_badge_radius), 0, 0)); top.addView(date);
         LinearLayout desc = new LinearLayout(this); desc.setOrientation(LinearLayout.VERTICAL); desc.setPadding(dp(9), 0, 0, 0); desc.addView(text(e.optString("holding_name"), 13, INK, true));
         String statusLabel = DividendCalendarRules.statusLabel(dataClass, e.optString("status"));
         String sourceLabel = "manual".equals(e.optString("source", "manual")) ? "手工录入" : e.optString("source", "");
@@ -1261,11 +1248,11 @@ private void showHome() {
         // already derived from the holding quantity at entry, so "estimated" is honest, not "pending".
         String quantityText = recordedQty > 0 ? compact(recordedQty) + " 股"
                 : "manual".equals(e.optString("data_class", "manual")) ? "按录入时持仓估算" : "登记股数待校正";
-        String perShare = amount(curr, e.optDouble("amount_per_share"));
+        String perShare = LedgerFormats.amount(curr, e.optDouble("amount_per_share"));
         String payDate = e.optString("pay_date_estimated").equals("1") || e.optInt("pay_date_estimated") == 1 ? "约 " : "";
-        String amountLabel = received ? (actualKnown ? "实际到账 " : "到账记录额 ") + amount(curr, actual) : "预计记录额 " + amount(curr, gross);
+        String amountLabel = received ? (actualKnown ? "实际到账 " : "到账记录额 ") + LedgerFormats.amount(curr, actual) : "预计记录额 " + LedgerFormats.amount(curr, gross);
         item.addView(text("每股 " + perShare + "  ·  登记数量 " + quantityText + "  ·  " + amountLabel, 11, INK, true), margin(0, 8, 0, 0));
-        item.addView(text("派息日 " + payDate + shortDate(e.optString("pay_date")) + "  ·  " + (taxKnown ? "税后情景 " + amount(curr, net) : "税务状态未知，暂不估税（不等于免税）"), 10, MUTED, false), margin(0, 4, 0, 0));
+        item.addView(text("派息日 " + payDate + LedgerFormats.shortDate(e.optString("pay_date")) + "  ·  " + (taxKnown ? "税后情景 " + LedgerFormats.amount(curr, net) : "税务状态未知，暂不估税（不等于免税）"), 10, MUTED, false), margin(0, 4, 0, 0));
         content.addView(item, margin(0, 4, 0, 4));
         if (allowMarkReceived && !received) { content.addView(actionButton("确认已到账", false, () -> confirmMarkReceived(e)), margin(62, 0, 0, 7)); }
         else if (allowMarkReceived && received && !actualKnown) { content.addView(actionButton("补录实际到账金额", false, () -> confirmMarkReceived(e)), margin(62, 0, 0, 7)); }
@@ -1309,7 +1296,7 @@ private void showHome() {
         for (JSONObject row : pending) {
             ids.add(row.optLong("_id"));
             String name = row.optString("holding_name", row.optString("holding_code", "持仓"));
-            details.addView(text(shortDate(row.optString("pay_date")) + " · " + name + " · 记录金额 " + amount(row.optString("currency", "CNY"), row.optDouble("total")), 11, MUTED, false), margin(0, 3, 0, 0));
+            details.addView(text(LedgerFormats.shortDate(row.optString("pay_date")) + " · " + name + " · 记录金额 " + LedgerFormats.amount(row.optString("currency", "CNY"), row.optDouble("total")), 11, MUTED, false), margin(0, 3, 0, 0));
         }
         details.addView(text("确认后只会把状态改为“已到账”，不会填写实际到账金额或改动持仓成本；如需按实收金额核算分红摊薄成本，可之后在月历逐笔补录。", 11, MUTED, false), margin(0, 8, 0, 0));
         new MaterialAlertDialogBuilder(this).setTitle("确认批量到账")
@@ -1337,7 +1324,7 @@ private void showHome() {
 
     private void markCalendarDate(Map<Integer, int[]> marks, String value, String ym, int type) {
         if (marks == null || type < 0 || type >= 3 || ym == null) return;
-        LocalDate d = parseDate(value); if (d == null || !d.toString().startsWith(ym)) return;
+        LocalDate d = LedgerFormats.parseDate(value); if (d == null || !d.toString().startsWith(ym)) return;
         int[] bits = marks.get(d.getDayOfMonth()); if (bits == null) bits = new int[3]; bits[type]++;
         marks.put(d.getDayOfMonth(), bits);
     }
@@ -1366,7 +1353,7 @@ private void showHome() {
                 MarketDataClient.Snapshot<MarketDataClient.Dividend> snap = marketData.dividends(market, code);
                 stale |= snap.stale; latestUpdated = Math.max(latestUpdated, snap.updatedAt); if (snap.rows.isEmpty()) { failed++; if (snap.warning != null) warning = snap.warning; continue; }
                 for (MarketDataClient.Dividend ev : snap.rows) {
-                    LocalDate record = parseDate(ev.recordDate), ex = parseDate(ev.exDate), pay = parseDate(ev.payDate);
+                    LocalDate record = LedgerFormats.parseDate(ev.recordDate), ex = LedgerFormats.parseDate(ev.exDate), pay = LedgerFormats.parseDate(ev.payDate);
                     LocalDate latest = pay != null ? pay : ex != null ? ex : record;
                     if (latest == null || latest.isBefore(today.minusYears(5)) || ev.payDate.isEmpty()) { skipped++; continue; }
                     boolean future = (record != null && !record.isBefore(today)) || (ex != null && !ex.isBefore(today)) || (pay != null && !pay.isBefore(today));
@@ -1427,14 +1414,14 @@ private void showHome() {
         ArrayList<FinanceMath.DripYear> rows = new ArrayList<>(FinanceMath.project(a, r, c, p, years, t));
         double target = totalGoalForCurrency(cur); int coveredYear = -1; for (FinanceMath.DripYear row : rows) if (target > 0 && row.netDividend >= target) { coveredYear = row.year; break; }
         CardColumn result = card(); result.setOrientation(LinearLayout.VERTICAL); result.addView(text("逐年测算 · " + cur, 16, INK, true));
-        result.addView(text(target > 0 ? (coveredYear > 0 ? "按当前同币种目标，预测第 " + coveredYear + " 年当年净分红达到年支出 " + amount(cur, target) : "预测期内未达到同币种年支出 " + amount(cur, target)) : "尚未设置同币种支出目标", 11, ACCENT, true), margin(0, 5, 0, 8));
+        result.addView(text(target > 0 ? (coveredYear > 0 ? "按当前同币种目标，预测第 " + coveredYear + " 年当年净分红达到年支出 " + LedgerFormats.amount(cur, target) : "预测期内未达到同币种年支出 " + LedgerFormats.amount(cur, target)) : "尚未设置同币种支出目标", 11, ACCENT, true), margin(0, 5, 0, 8));
         double max = 1; for (FinanceMath.DripYear row : rows) max = Math.max(max, row.closing);
         for (FinanceMath.DripYear row : rows) {
             int bars = (int) Math.max(1, Math.round(row.closing / max * 16)); StringBuilder bar = new StringBuilder(); for (int i = 0; i < bars; i++) bar.append('▰');
             LinearLayout yr = new LinearLayout(this); yr.setOrientation(LinearLayout.VERTICAL); yr.setPadding(0, dp(6), 0, dp(6));
-            yr.addView(text("第 " + row.year + " 年  ·  年末资产 " + amount(cur, row.closing) + "  " + bar, 12, INK, true));
-            yr.addView(text("期初 " + amount(cur, row.opening) + "  ·  税前分红 " + amount(cur, row.grossDividend) + "  ·  税后 " + amount(cur, row.netDividend), 10, MUTED, false), margin(0, 3, 0, 0));
-            yr.addView(text("再投资 " + amount(cur, row.reinvested) + "  ·  追加投入 " + amount(cur, row.contribution) + "  ·  累计税后分红 " + amount(cur, row.cumulativeNet), 10, MUTED, false), margin(0, 2, 0, 0)); result.addView(yr); if (row.year < rows.size()) result.addView(divider());
+            yr.addView(text("第 " + row.year + " 年  ·  年末资产 " + LedgerFormats.amount(cur, row.closing) + "  " + bar, 12, INK, true));
+            yr.addView(text("期初 " + LedgerFormats.amount(cur, row.opening) + "  ·  税前分红 " + LedgerFormats.amount(cur, row.grossDividend) + "  ·  税后 " + LedgerFormats.amount(cur, row.netDividend), 10, MUTED, false), margin(0, 3, 0, 0));
+            yr.addView(text("再投资 " + LedgerFormats.amount(cur, row.reinvested) + "  ·  追加投入 " + LedgerFormats.amount(cur, row.contribution) + "  ·  累计税后分红 " + LedgerFormats.amount(cur, row.cumulativeNet), 10, MUTED, false), margin(0, 2, 0, 0)); result.addView(yr); if (row.year < rows.size()) result.addView(divider());
         }
         content.addView(result, margin(0, 0, 0, 10));
     }
@@ -1446,8 +1433,8 @@ private void showHome() {
             JSONObject g = goals.optJSONObject(i); double annual = safeAnnualExpense(g.optString("period"), g.optDouble("amount")); String curr = g.optString("currency", "CNY");
             double ratio = FinanceMath.coveragePercent(netIncome.getOrDefault(curr, 0d), annual); CardColumn item = card(); item.setOrientation(LinearLayout.VERTICAL);
             LinearLayout row = row(); row.addView(text(g.optString("name"), 15, INK, true), new LinearLayout.LayoutParams(0, -2, 1)); row.addView(actionButton("•••", false, () -> goalMenu(g))); item.addView(row);
-            String per = g.optString("period"); item.addView(text(per + "支出 " + amount(curr, g.optDouble("amount")) + " · 年化 " + amount(curr, annual), 11, MUTED, false), margin(0, 5, 0, 0));
-            item.addView(text("同币种预计净收入覆盖 " + percent(ratio / 100d) + "  ·  " + amount(curr, netIncome.getOrDefault(curr, 0d)) + " / 年", 12, ACCENT, true), margin(0, 5, 0, 0));
+            String per = g.optString("period"); item.addView(text(per + "支出 " + LedgerFormats.amount(curr, g.optDouble("amount")) + " · 年化 " + LedgerFormats.amount(curr, annual), 11, MUTED, false), margin(0, 5, 0, 0));
+            item.addView(text("同币种预计净收入覆盖 " + LedgerFormats.percent(ratio / 100d) + "  ·  " + LedgerFormats.amount(curr, netIncome.getOrDefault(curr, 0d)) + " / 年", 12, ACCENT, true), margin(0, 5, 0, 0));
             LinearLayout progress = new LinearLayout(this); progress.setOrientation(LinearLayout.HORIZONTAL); progress.setBackground(roundDp(getColor(R.color.app_progress_track), 8, 0, 0)); progress.setClipToOutline(true);
             float fill = (float) Math.min(100d, Math.max(0d, ratio)); progress.addView(new View(this), new LinearLayout.LayoutParams(0, dp(5), Math.max(.01f, fill)));
             if (fill < 100f) progress.addView(new View(this), new LinearLayout.LayoutParams(0, dp(5), Math.max(.01f, 100f - fill)));
@@ -1480,27 +1467,27 @@ private void showHome() {
     private void showStatsPage() {
         pageTitle("统计报表", "按用户账本与税务设置估算；公开行情用于持仓市值参考"); addTaxToggle();
         Map<String, Double> costs = costByCurrency(), selectedAnnual = estimatedIncomeByCurrency(taxNet), gross = estimatedIncomeByCurrency(false), net = estimatedIncomeByCurrency(true);
-        content.addView(text("持仓成本  " + formatAmounts(costs), 13, INK, true), margin(0, 4, 0, 6));
+        content.addView(text("持仓成本  " + LedgerFormats.formatAmounts(costs), 13, INK, true), margin(0, 4, 0, 6));
         JSONArray selectedHoldings = db.holdings(selectedAccount);
-        content.addView(text("持仓市值（按币种）  " + formatAmounts(marketValueByCurrency(selectedHoldings)), 13, INK, true), margin(0, 0, 0, 5));
-        content.addView(text("浮动盈亏（按币种）  " + formatAmounts(floatingProfitByCurrency(selectedHoldings)), 13, INK, true), margin(0, 0, 0, 8));
+        content.addView(text("持仓市值（按币种）  " + LedgerFormats.formatAmounts(marketValueByCurrency(selectedHoldings)), 13, INK, true), margin(0, 0, 0, 5));
+        content.addView(text("浮动盈亏（按币种）  " + LedgerFormats.formatAmounts(floatingProfitByCurrency(selectedHoldings)), 13, INK, true), margin(0, 0, 0, 8));
         content.addView(text("行情取最近已收盘价；缺行情时按成本估值且不计浮动盈亏。外币未折算。", 10, MUTED, false), margin(0, 0, 0, 8));
-        content.addView(text("预计年分红 · 税前  " + formatAmounts(gross), 13, INK, true), margin(0, 0, 0, 5));
-        content.addView(text("预计年分红 · 税后估算  " + formatAmounts(net), 13, DIVIDEND, true), margin(0, 0, 0, 5));
+        content.addView(text("预计年分红 · 税前  " + LedgerFormats.formatAmounts(gross), 13, INK, true), margin(0, 0, 0, 5));
+        content.addView(text("预计年分红 · 税后估算  " + LedgerFormats.formatAmounts(net), 13, DIVIDEND, true), margin(0, 0, 0, 5));
         if (taxNet && hasUnknownTaxEstimate()) content.addView(text("税务身份/渠道未确认的持仓未纳入税后合计；未知不代表免税，也不会以 0% 代算。", 10, MUTED, false), margin(0, 0, 0, 6));
-        content.addView(text("当前口径日均  " + formatAmounts(scaleMap(selectedAnnual, 1d / 365d)), 12, MUTED, false), margin(0, 0, 0, 5));
-        content.addView(text("当前口径月均  " + formatAmounts(scaleMap(selectedAnnual, 1d / 12d)), 12, MUTED, false), margin(0, 0, 0, 12));
+        content.addView(text("当前口径日均  " + LedgerFormats.formatAmounts(scaleMap(selectedAnnual, 1d / 365d)), 12, MUTED, false), margin(0, 0, 0, 5));
+        content.addView(text("当前口径月均  " + LedgerFormats.formatAmounts(scaleMap(selectedAnnual, 1d / 12d)), 12, MUTED, false), margin(0, 0, 0, 12));
         TreeMap<String, Double> yocs = new TreeMap<>(); for (String c : costs.keySet()) if (costs.get(c) > 0 && selectedAnnual.containsKey(c)) yocs.put(c, selectedAnnual.get(c) / costs.get(c));
-        content.addView(text("综合成本收益率（YoC）", 15, INK, true)); content.addView(text(yocs.isEmpty() ? "—" : formatPercentMap(yocs), 13, DIVIDEND, true), margin(0, 4, 0, 12));
-        content.addView(text("累计已确认分红", 15, INK, true)); content.addView(text(formatAmounts(receivedAllTime()), 13, DIVIDEND, true), margin(0, 4, 0, 12));
+        content.addView(text("综合成本收益率（YoC）", 15, INK, true)); content.addView(text(yocs.isEmpty() ? "—" : LedgerFormats.formatPercentMap(yocs), 13, DIVIDEND, true), margin(0, 4, 0, 12));
+        content.addView(text("累计已确认分红", 15, INK, true)); content.addView(text(LedgerFormats.formatAmounts(receivedAllTime()), 13, DIVIDEND, true), margin(0, 4, 0, 12));
         sectionHeader("各标的年分红贡献", "持仓", () -> { activeTab = "holdings"; render(); });
         ArrayList<JSONObject> list = new ArrayList<>(); JSONArray holdings = db.holdings(selectedAccount); for (int i = 0; i < holdings.length(); i++) list.add(holdings.optJSONObject(i));
         Collections.sort(list, (a, b) -> Double.compare(annualForSort(b, taxNet), annualForSort(a, taxNet)));
         if (list.isEmpty()) emptyCard("还没有持仓", "新增持仓后，这里按每只标的的预计年分红从高到低排序。", "新增持仓", this::showHoldingQuickActions);
         for (int i = 0; i < list.size(); i++) {
             JSONObject h = list.get(i); double annual = annualOf(h, taxNet), totalCost = h.optDouble("quantity") * h.optDouble("cost");
-            String annualLabel = !Double.isFinite(annual) ? "税务未确认" : amount(h.optString("currency"), annual) + "/年";
-            String yoc = Double.isFinite(annual) && totalCost > 0 ? percent(annual / totalCost) : "—";
+            String annualLabel = !Double.isFinite(annual) ? "税务未确认" : LedgerFormats.amount(h.optString("currency"), annual) + "/年";
+            String yoc = Double.isFinite(annual) && totalCost > 0 ? LedgerFormats.percent(annual / totalCost) : "—";
             content.addView(text((i + 1) + ". " + h.optString("name") + " · " + annualLabel + " · YoC " + yoc, 12, INK, false), margin(0, 6, 0, 1));
         }
         LinearLayout back = row(); back.addView(actionButton("返回统计与设置", false, () -> { activeTab = "more"; render(); }), margin(0, 14, 0, 0)); content.addView(back);
@@ -1517,7 +1504,7 @@ private void showHome() {
         CardColumn card = card(); card.setOrientation(LinearLayout.VERTICAL); card.addView(text("可编辑税率默认假设", 16, INK, true));
         card.addView(text("全局税务身份/账户通道仅由你选择，不按设备位置推断。自动模式按 A 股交易批次估算；港股普通账户、美股协定资格和基金分配未知时只显示税前参考。", 11, MUTED, false), margin(0, 5, 0, 8));
         card.addView(text("身份：" + setting("tax_identity", "未确认") + "\n港股：" + setting("tax_hk_channel", "未确认") + "\n美股：" + setting("tax_us_status", "未确认"), 11, ACCENT, true));
-        card.addView(text("A股短/中/长情景参数：" + percent(settingDouble("tax_a_short", .2)) + " / " + percent(settingDouble("tax_a_mid", .1)) + " / " + percent(settingDouble("tax_a_long", 0)), 10, MUTED, false), margin(0, 5, 0, 0));
+        card.addView(text("A股短/中/长情景参数：" + LedgerFormats.percent(settingDouble("tax_a_short", .2)) + " / " + LedgerFormats.percent(settingDouble("tax_a_mid", .1)) + " / " + LedgerFormats.percent(settingDouble("tax_a_long", 0)), 10, MUTED, false), margin(0, 5, 0, 0));
         card.addView(actionButton("编辑税率假设", false, this::showTaxSettingsDialog), margin(0, 8, 0, 0));
         content.addView(card, margin(0, 0, 0, 10));
     }
@@ -1590,7 +1577,7 @@ private void showHome() {
             JSONObject t = transactions.optJSONObject(i); if (t == null) continue; CardColumn item = card(); item.setOrientation(LinearLayout.VERTICAL);
             LinearLayout top = row(); top.setGravity(Gravity.CENTER_VERTICAL);
             top.addView(text(t.optString("side"), 12, INK, true), new LinearLayout.LayoutParams(dp(42), -2));
-            top.addView(text(t.optString("holding_name") + " · " + shortDate(t.optString("trade_date")) + " · " + compact(t.optDouble("quantity")) + " × " + amount("", t.optDouble("price")), 11, INK, false), new LinearLayout.LayoutParams(0, -2, 1));
+            top.addView(text(t.optString("holding_name") + " · " + LedgerFormats.shortDate(t.optString("trade_date")) + " · " + compact(t.optDouble("quantity")) + " × " + LedgerFormats.amount("", t.optDouble("price")), 11, INK, false), new LinearLayout.LayoutParams(0, -2, 1));
             item.addView(top); content.addView(item, margin(0, 3, 0, 4));
             content.addView(editDeleteRow(() -> showTransactionDialog(0, t.optLong("_id")),
                     () -> confirmDeleteTransaction(t)), margin(62, 0, 0, 7));
@@ -1629,7 +1616,7 @@ private void showHome() {
         EditText cost = numberEdit(editing ? String.valueOf(existing.optDouble("cost")) : initial == null ? "" : initial.optString("cost", ""), "当前每份成本");
         MiuixListView costMethod = spinner(new String[]{"分红摊薄", "摊薄成本", "加权平均"});
         String initialCostMethod = initial == null ? FinanceMath.COST_WEIGHTED_AVERAGE : initial.optString("cost_method", FinanceMath.COST_WEIGHTED_AVERAGE);
-        selectSpinner(costMethod, costMethodLabel(initialCostMethod));
+        selectSpinner(costMethod, LedgerFormats.costMethodLabel(initialCostMethod));
         double initialPerUnit = editing ? existing.optDouble("annual_dividend_per_unit") : initial == null ? 0d : initial.optDouble("annual_dividend_per_unit", 0d);
         EditText annualDiv = numberEdit(initialPerUnit > 0d ? String.format(Locale.US, "%.6f", initialPerUnit) : "", "每份全年预计分红");
         boolean ocrDateUnparsed = !editing && initial != null && initial.optBoolean("ocr_date_unparsed", false);
@@ -1679,7 +1666,7 @@ private void showHome() {
             else {
                 double total = state.manualEdited ? FinanceMath.annualDividend(shares, perUnit) : DividendForecast.annualTotal(shares, state.estimate);
                 if (Double.isNaN(total)) total = FinanceMath.annualDividend(shares, perUnit);
-                forecastPreview.setText("预计年总额 " + amount(selectedItem(currency), total) + " = " + amount(selectedItem(currency), perUnit) + "/份 × " + compact(shares) + " 份");
+                forecastPreview.setText("预计年总额 " + LedgerFormats.amount(selectedItem(currency), total) + " = " + LedgerFormats.amount(selectedItem(currency), perUnit) + "/份 × " + compact(shares) + " 份");
             }
         };
 
@@ -1805,7 +1792,7 @@ private void showHome() {
         d.setOnShowListener(v -> d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(b -> {
             String n = name.getText().toString().trim(); double q = parseNumber(quantity), costValue = parseNumber(cost), div = parseNumber(annualDiv), rate = parseNumber(taxRate) / 100d;
             if (n.isEmpty()) { name.setError("请填写名称"); return; }
-            String selectedCostMethod = costMethodValue(selectedItem(costMethod));
+            String selectedCostMethod = LedgerFormats.costMethodValue(selectedItem(costMethod));
             // Report the offending field instead of piling every rule onto 数量: a wrong tax rate
             // or a negative dividend used to highlight the quantity box and nothing else.
             if (!hasNumber(quantity) || q <= 0) { quantity.setError("数量需大于 0"); return; }
@@ -1813,7 +1800,7 @@ private void showHome() {
             if (FinanceMath.COST_WEIGHTED_AVERAGE.equals(selectedCostMethod) && costValue < 0) { cost.setError("加权平均成本不能为负"); return; }
             if (!hasNumber(annualDiv) || div < 0) { annualDiv.setError("每份年分红不能为负"); return; }
             if (!hasNumber(taxRate) || rate < 0 || rate > 1) { taxRate.setError("税率需在 0–100% 之间"); return; }
-            LocalDate opened = parseDate(openedOn.getText().toString()); if (opened == null) { openedOn.setError("请选择有效日期"); return; }
+            LocalDate opened = LedgerFormats.parseDate(openedOn.getText().toString()); if (opened == null) { openedOn.setError("请选择有效日期"); return; }
             JSONObject a = selectedJson(account); String savedCode = code.getText().toString().trim(), savedMarket = selectedItem(market);
             String selectedTaxMode = "自定义税率".equals(selectedItem(taxMode)) ? "manual" : "auto";
             long holdingId = db.saveHolding(editing ? existing.optLong("_id") : 0, n, savedCode, savedMarket,
@@ -1905,7 +1892,7 @@ private void showHome() {
                             return;
                         }
                         String quoteCache = quote.stale ? "本机旧缓存" : quoteResult.cached ? "本机缓存" : "在线行情";
-                        quoteStatus.setText("腾讯公开行情 " + amount(quote.currency, quote.price) + " · " + marketMoveLabel(quote.changePercent) + " · " + quoteCache + " · 更新于 "
+                        quoteStatus.setText("腾讯公开行情 " + LedgerFormats.amount(quote.currency, quote.price) + " · " + marketMoveLabel(quote.changePercent) + " · " + quoteCache + " · 更新于 "
                                 + timeLabel(quote.updatedAt) + "；仅供参考，数量和成本未修改。");
                         quoteStatus.setTextColor(marketMoveColor(quote.changePercent));
                     });
@@ -2278,17 +2265,17 @@ private void showHome() {
             JSONObject h = selectedJson(holding); if (h == null) return;
             double gross = parseNumber(perShare) * h.optDouble("quantity"); String taxDate = blankToNull(recordDate.getText().toString());
             if (taxDate == null) taxDate = LocalDate.now().toString(); boolean known = taxEstimateKnown(h, taxDate);
-            String net = known ? amount(h.optString("currency"), FinanceMath.afterTax(gross, effectiveTaxRate(h, taxDate))) : "税务状态未知";
-            estimate.setText("预计记录额 " + amount(h.optString("currency"), gross) + " · " + (known ? "税后情景 " + net : net + "（不等于免税）"));
+            String net = known ? LedgerFormats.amount(h.optString("currency"), FinanceMath.afterTax(gross, effectiveTaxRate(h, taxDate))) : "税务状态未知";
+            estimate.setText("预计记录额 " + LedgerFormats.amount(h.optString("currency"), gross) + " · " + (known ? "税后情景 " + net : net + "（不等于免税）"));
         };
         if (existing != null) {
-            perShare.setText(plain(existing.optDouble("amount_per_share")));
+            perShare.setText(LedgerFormats.plain(existing.optDouble("amount_per_share")));
             payDate.setText(existing.optString("pay_date"));
             recordDate.setText(existing.optString("record_date"));
             exDate.setText(existing.optString("ex_date"));
             selectSpinner(status, "received".equals(existing.optString("status")) ? "已到账" : "预计");
             note.setText(existing.optString("note"));
-            if (!existing.isNull("received_amount")) actualReceived.setText(plain(existing.optDouble("received_amount")));
+            if (!existing.isNull("received_amount")) actualReceived.setText(LedgerFormats.plain(existing.optDouble("received_amount")));
         }
         actualReceived.setVisibility("已到账".equals(selectedItem(status)) ? View.VISIBLE : View.GONE);
         perShare.addTextChangedListener(new TextWatcher() { public void beforeTextChanged(CharSequence s, int st, int c, int a) {} public void onTextChanged(CharSequence s, int st, int before, int count) { update.run(); } public void afterTextChanged(Editable e) {} });
@@ -2304,7 +2291,7 @@ private void showHome() {
         });
         LinearLayout f = form(); f.addView(field("关联持仓", holding)); f.addView(field("每股/每份分红金额", perShare)); f.addView(estimate, margin(3, -1, 0, 5)); f.addView(field("派息日", payDate)); f.addView(field("登记日（可选）", recordDate)); f.addView(field("除息日（可选）", exDate)); f.addView(field("状态", status)); f.addView(field("实际到账金额（可选，仅已到账时）", actualReceived)); f.addView(field("备注", note));
         AlertDialog d = new MaterialAlertDialogBuilder(this).setTitle(existing == null ? "添加分红事件" : "编辑分红事件").setView(wrapForm(f)).setNegativeButton("取消", null).setPositiveButton("保存", null).create();
-        d.setOnShowListener(v -> d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(b -> { JSONObject h = selectedJson(holding); double p = parseNumber(perShare); LocalDate date = parseDate(payDate.getText().toString());
+        d.setOnShowListener(v -> d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(b -> { JSONObject h = selectedJson(holding); double p = parseNumber(perShare); LocalDate date = LedgerFormats.parseDate(payDate.getText().toString());
             if (h == null || p <= 0) { perShare.setError("分红金额需大于 0"); return; } if (date == null) { payDate.setError("请选择有效日期"); return; }
             String state = "已到账".equals(selectedItem(status)) ? "received" : "expected"; String taxDate = blankToNull(recordDate.getText().toString()); if (taxDate == null) taxDate = LocalDate.now().toString();
             double rate = effectiveTaxRate(h, taxDate); boolean known = taxEstimateKnown(h, taxDate);
@@ -2340,12 +2327,12 @@ private void showHome() {
         if (existing != null) {
             selectSpinner(side, existing.optString("side", "买入"));
             date.setText(existing.optString("trade_date"));
-            quantity.setText(plain(existing.optDouble("quantity"))); price.setText(plain(existing.optDouble("price")));
-            fees.setText(plain(existing.optDouble("fees"))); note.setText(existing.optString("note"));
+            quantity.setText(LedgerFormats.plain(existing.optDouble("quantity"))); price.setText(LedgerFormats.plain(existing.optDouble("price")));
+            fees.setText(LedgerFormats.plain(existing.optDouble("fees"))); note.setText(existing.optString("note"));
         }
         LinearLayout f = form(); f.addView(field("持仓", holding)); f.addView(field("方向", side)); f.addView(field("日期", date)); f.addView(field("数量", quantity)); f.addView(field("成交单价", price)); f.addView(field("手续费", fees)); f.addView(field("备注", note)); f.addView(text("买入手续费并入加权成本；卖出减少股数并保持原每份成本，不能超卖。保存后该持仓的数量与成本会按全部记录重新计算。", 10, MUTED, false));
         AlertDialog d = new MaterialAlertDialogBuilder(this).setTitle(existing == null ? "新增交易记录" : "编辑交易记录").setView(wrapForm(f)).setNegativeButton("取消", null).setPositiveButton("保存", null).create();
-        d.setOnShowListener(v -> d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(b -> { JSONObject h = selectedJson(holding); double q = parseNumber(quantity), p = parseNumber(price), fee = parseNumber(fees); LocalDate dt = parseDate(date.getText().toString());
+        d.setOnShowListener(v -> d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(b -> { JSONObject h = selectedJson(holding); double q = parseNumber(quantity), p = parseNumber(price), fee = parseNumber(fees); LocalDate dt = LedgerFormats.parseDate(date.getText().toString());
             if (h == null) { toast("请先选择持仓"); return; }
             if (!hasNumber(quantity) || q <= 0) { quantity.setError("数量需大于 0"); return; }
             if (!hasNumber(price) || p < 0) { price.setError("成交单价不能为负"); return; }
@@ -2359,7 +2346,7 @@ private void showHome() {
     }
 
     private void confirmDeleteTransaction(JSONObject t) {
-        String what = t.optString("holding_name") + " · " + shortDate(t.optString("trade_date")) + " · "
+        String what = t.optString("holding_name") + " · " + LedgerFormats.shortDate(t.optString("trade_date")) + " · "
                 + t.optString("side") + " " + compact(t.optDouble("quantity"));
         new MaterialAlertDialogBuilder(this).setTitle("删除这笔交易").setMessage(what
                         + "\n\n删除后该持仓的数量与成本会按剩余记录重新计算，这笔交易对持有期税率的贡献也会一并移除。已到账的分红不受影响。")
@@ -2371,8 +2358,8 @@ private void showHome() {
     }
 
     private void confirmDeleteDividend(JSONObject e) {
-        String what = e.optString("holding_name", "分红") + " · " + shortDate(e.optString("pay_date"))
-                + " · " + amount(e.optString("currency", "CNY"), e.optDouble("total"));
+        String what = e.optString("holding_name", "分红") + " · " + LedgerFormats.shortDate(e.optString("pay_date"))
+                + " · " + LedgerFormats.amount(e.optString("currency", "CNY"), e.optDouble("total"));
         boolean dilutes = !e.isNull("received_amount") && e.optDouble("received_amount") > 0;
         new MaterialAlertDialogBuilder(this).setTitle("删除这笔分红").setMessage(what
                         + (dilutes ? "\n\n这笔分红已摊薄过持仓成本，删除后会被加回，成本与收益数字会随之变化。" : "")
@@ -2399,11 +2386,6 @@ private void showHome() {
     }
 
     /** A stored number back into an input, without the grouping and padding used for display. */
-    private static String plain(double value) {
-        if (!Double.isFinite(value)) return "";
-        if (value == Math.rint(value) && Math.abs(value) < 1e15) return String.valueOf((long) value);
-        return String.valueOf(value);
-    }
 
     private void chooseAccount() {
         JSONArray accounts = db.accounts(); String[] labels = new String[accounts.length() + 1]; long[] ids = new long[accounts.length() + 1]; labels[0] = "全部账户";
@@ -2575,7 +2557,7 @@ private void showHome() {
         EditText e = edit(initial, optional ? "可留空" : "选择日期"); e.setFocusable(false); e.setClickable(true);
         e.setOnClickListener(v -> {
             Runnable chooseDate = () -> {
-                LocalDate initialDate = parseDate(e.getText().toString()); if (initialDate == null) initialDate = LocalDate.now();
+                LocalDate initialDate = LedgerFormats.parseDate(e.getText().toString()); if (initialDate == null) initialDate = LocalDate.now();
                 long selection = initialDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
                 MaterialDatePicker<Long> picker = MaterialDatePicker.Builder.datePicker().setTitleText("选择日期").setSelection(selection).build();
                 picker.addOnPositiveButtonClickListener(selected -> e.setText(LocalDate.ofEpochDay(selected / 86_400_000L).toString()));
@@ -2692,7 +2674,7 @@ private void showHome() {
             JSONArray lots = db.taxLotsAt(h.optLong("_id"), taxDate); ArrayList<FinanceMath.Lot> taxLots = new ArrayList<>();
             for (int i = 0; i < lots.length(); i++) {
                 JSONObject lot = lots.optJSONObject(i); if (lot == null) return 0d;
-                double qty = lot.optDouble("quantity", Double.NaN); LocalDate opened = parseDate(lot.optString("opened_on")); if (opened == null) return 0d;
+                double qty = lot.optDouble("quantity", Double.NaN); LocalDate opened = LedgerFormats.parseDate(lot.optString("opened_on")); if (opened == null) return 0d;
                 taxLots.add(new FinanceMath.Lot(qty, opened));
             }
             // Clamp before the call, not after: aShareRecordDateTaxRate rejects out-of-range rates
@@ -2732,16 +2714,6 @@ private void showHome() {
     private double annualForSort(JSONObject h, boolean net) { double value = annualOf(h, net); return Double.isFinite(value) ? value : 0d; }
     private Map<String, Double> costByCurrency() { Map<String, Double> sums = new TreeMap<>(); JSONArray hs = db.holdings(selectedAccount); for (int i = 0; i < hs.length(); i++) { JSONObject h = hs.optJSONObject(i); String c = h.optString("currency", "CNY"); sums.put(c, sums.getOrDefault(c, 0d) + h.optDouble("quantity") * h.optDouble("cost")); } return sums; }
     private Map<String, Double> receivedAllTime() { Map<String, Double> sums = new TreeMap<>(); JSONArray rows = db.receivedAllTime(selectedAccount); for (int i = 0; i < rows.length(); i++) { JSONObject r = rows.optJSONObject(i); sums.put(r.optString("currency", "CNY"), r.optDouble("total", 0)); } return sums; }
-    private String costMethodLabel(String method) {
-        if (FinanceMath.COST_DIVIDEND_ADJUSTED.equals(method)) return "分红摊薄";
-        if (FinanceMath.COST_DILUTED.equals(method)) return "摊薄成本";
-        return "加权平均";
-    }
-    private String costMethodValue(String label) {
-        if ("分红摊薄".equals(label)) return FinanceMath.COST_DIVIDEND_ADJUSTED;
-        if ("摊薄成本".equals(label)) return FinanceMath.COST_DILUTED;
-        return FinanceMath.COST_WEIGHTED_AVERAGE;
-    }
     private long settingLong(String key, long fallback) { try { return Long.parseLong(db.setting(key, String.valueOf(fallback))); } catch (Exception e) { return fallback; } }
     private boolean hasUnknownTaxEstimate() {
         JSONArray hs = db.holdings(selectedAccount);
@@ -2768,14 +2740,8 @@ private void showHome() {
     private String setting(String key, String fallback) { return db.setting(key, fallback); }
     private double clampRate(double rate) { return Math.max(0, Math.min(1, rate)); }
     private Map<String, Double> scaleMap(Map<String, Double> source, double scale) { Map<String, Double> out = new TreeMap<>(); for (Map.Entry<String, Double> e : source.entrySet()) out.put(e.getKey(), e.getValue() * scale); return out; }
-    private String formatAmounts(Map<String, Double> values) { if (values.isEmpty()) return "—"; ArrayList<String> parts = new ArrayList<>(); for (Map.Entry<String, Double> e : values.entrySet()) parts.add(amount(e.getKey(), e.getValue())); return android.text.TextUtils.join("  /  ", parts); }
-    private String formatPercentMap(Map<String, Double> values) { if (values.isEmpty()) return "—"; ArrayList<String> parts = new ArrayList<>(); for (Map.Entry<String, Double> e : values.entrySet()) parts.add(e.getKey() + " " + percent(e.getValue())); return android.text.TextUtils.join("  /  ", parts); }
     /** Renders an unknown value as a dash rather than letting DecimalFormat print "NaN" or "∞". */
-    private String percent(double rate) { return Double.isFinite(rate) ? moneyFormat.format(rate * 100d) + "%" : "—"; }
-    private String amount(String currency, double value) { String prefix; switch (currency == null ? "" : currency) { case "CNY": prefix = "¥"; break; case "HKD": prefix = "HK$"; break; case "USD": prefix = "$"; break; default: prefix = currency == null || currency.isEmpty() ? "" : currency + " "; } return prefix + (Double.isFinite(value) ? moneyFormat.format(value) : "—"); }
     private String compact(double value) { if (!Double.isFinite(value)) return "—"; if (Math.abs(value - Math.rint(value)) < 1e-7) return String.format(Locale.US, "%.0f", value); return new DecimalFormat("#,##0.####").format(value); }
-    private String shortDate(String value) { LocalDate d = parseDate(value); return d == null ? value : d.format(DateTimeFormatter.ofPattern("M月d日")); }
-    private LocalDate parseDate(String value) { try { return LocalDate.parse(value == null ? "" : value.trim(), ISO); } catch (Exception ignored) { return null; } }
     private String blankToNull(String value) { String v = value == null ? "" : value.trim(); return v.isEmpty() ? null : v; }
     private double parseNumber(EditText e) { try { return Double.parseDouble(e.getText().toString().trim()); } catch (Exception ignored) { return 0; } }
 
