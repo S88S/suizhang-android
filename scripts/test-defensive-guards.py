@@ -10,6 +10,7 @@ from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
 activity = (root / "app/src/main/java/cn/suizhang/ledger/MainActivity.java").read_text(encoding="utf-8")
+formats = (root / "app/src/main/java/cn/suizhang/ledger/LedgerFormats.java").read_text(encoding="utf-8")
 database = (root / "app/src/main/java/cn/suizhang/ledger/LedgerDatabase.java").read_text(encoding="utf-8")
 worker = (root / "app/src/main/java/cn/suizhang/ledger/DividendReminderWorker.java").read_text(encoding="utf-8")
 milestones = (root / "app/src/main/java/cn/suizhang/ledger/DividendMilestones.java").read_text(encoding="utf-8")
@@ -58,10 +59,10 @@ require("新增分红与其成本摊薄进入同一事务",
 require("设置读取对 NULL 值回退到默认值",
         "return value == null ? fallback : value;" in database)
 require("百分比与金额对非有限值显示破折号，不输出 NaN",
-        'Double.isFinite(rate) ? moneyFormat.format(rate * 100d) + "%" : "—"' in activity
-        and "Double.isFinite(value) ? moneyFormat.format(value) : \"—\"" in activity)
+        'Double.isFinite(rate) ? moneyFormat().format(rate * 100d) + "%" : "—"' in formats
+        and "Double.isFinite(value) ? format.format(value) : \"—\"" in formats)
 require("金额格式显式采用四舍五入，不用默认的银行家舍入",
-        "setRoundingMode(RoundingMode.HALF_UP)" in activity)
+        "setRoundingMode(RoundingMode.HALF_UP)" in formats)
 
 # --- quote availability ---
 require("行情缺失按原因分流，未填代码与不支持市场不再混为一句",

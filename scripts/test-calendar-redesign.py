@@ -42,7 +42,7 @@ require("日历以圆点替代登除派缩写，且保留可访问日期/事件�
 require("Miuix 主卡片、图标字体和本地 OFL 字体许可齐备", "MiuixCardView heroSurface" in MAIN and "CardColumn extends MiuixCardView" in MAIN and "R.font.noto_sans_sc" in MAIN and (ROOT / "app/src/main/assets/licenses/NotoSansSC-OFL.txt").is_file())
 require("同步操作行针对大字或窄屏自适应", "fontScale > 1.45f" in calendar and "screenWidthDp < 360" in calendar and "actionHeight" in calendar)
 require("日历遵循提醒、月份导航、图例、待收概况、更新时间、日历网格的层级", calendar.index("db.announcedDividends") < calendar.index("LinearLayout monthHead") < calendar.index("本月到账与待收") < calendar.index("公开分红数据上次更新") < calendar.index("GridLayout grid"))
-require("公告金额按币种分列，保留官方公告核对提示", "formatAmounts(announcedAmounts)" in calendar and "以正式公告及券商记录为准" in calendar)
+require("公告金额按币种分列，保留官方公告核对提示", "LedgerFormats.formatAmounts(announcedAmounts)" in calendar and "以正式公告及券商记录为准" in calendar)
 require("待收用记录额，已到账优先显示用户录入的实收额", "received_amount" in calendar and "到账优先用实收金额" in calendar)
 require("外部圈选只留在设计说明，不实现手绘圆圈", "不复刻成 App 的圈线或装饰边框" in DESIGN and "drawCircle(" not in MAIN and "addCircle(" not in MAIN)
 require("日期标记、账户过滤和既有说明口径仍保留", all(token in calendar for token in ("record_date", "ex_date", "pay_date", "db.dividends(selectedAccount, ym)")) and "（在总览切换）" in MAIN)

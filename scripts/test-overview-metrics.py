@@ -4,6 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MAIN = (ROOT / "app/src/main/java/cn/suizhang/ledger/MainActivity.java").read_text(encoding="utf-8")
+FORMATS = (ROOT / "app/src/main/java/cn/suizhang/ledger/LedgerFormats.java").read_text(encoding="utf-8")
 DB = (ROOT / "app/src/main/java/cn/suizhang/ledger/LedgerDatabase.java").read_text(encoding="utf-8")
 DESIGN = (ROOT / "DESIGN.md").read_text(encoding="utf-8")
 
@@ -40,7 +41,7 @@ require("净投入按完整交易流水汇总并保留账户过滤", "netInveste
 require("净投入按含买入手续费的买入额减扣卖出手续费后的卖出净额", "t.quantity*t.price+t.fees" in DB and "-(t.quantity*t.price-t.fees)" in DB)
 require("年度到账和累计到账只统计 received 记录", "db.incomeSummary(selectedAccount, targetYear)" in MAIN and '"received".equals(row.optString("status"))' in MAIN and "db.receivedAllTime(selectedAccount)" in MAIN)
 require("市值息率和盈亏率只基于已取得的行情", "quote == null || quote.price <= 0d" in MAIN and "profitRateByCurrency(JSONArray holdings)" in MAIN and "if (quote == null) continue" in MAIN)
-require("货币金额按币种格式化并保留换汇边界说明", "private String formatAmounts(Map<String, Double> values)" in MAIN and "金额按币种分开展示，不做汇率换算" in settings)
+require("货币金额按币种格式化并保留换汇边界说明", "static String formatAmounts(Map<String, Double> values)" in FORMATS and "金额按币种分开展示，不做汇率换算" in settings)
 require("最早买入时间按所选范围和实际首买日期计算", 'db.firstPurchaseDate(h.optLong("_id"))' in MAIN and "首笔买入至今" in MAIN)
 require("设计说明记录总览可选指标和恢复默认", "用户自选 0–6 项指标" in DESIGN and "恢复默认" in DESIGN)
 require("设计说明记录实时预览与已选可选分区", "实时预览" in DESIGN and "已选指标" in DESIGN and "可选指标" in DESIGN)
