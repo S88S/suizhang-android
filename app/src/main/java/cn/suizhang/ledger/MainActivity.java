@@ -283,7 +283,42 @@ public class MainActivity extends AppCompatActivity {
      */
     private void render() {
         try { renderPage(); }
-        catch (Exception e) { Log.w("Suizhang", "render failed", e); toast("页面刷新失败：" + safeMessage(e)); }
+        catch (Exception e) {
+            Log.w("Suizhang", "render failed", e);
+            dumpRenderFailure(e);
+            toast("页面刷新失败：" + safeMessage(e));
+        }
+    }
+
+    /**
+     * 把渲染失败的完整堆栈写到应用外部文件目录，供排查。
+     *
+     * <p>logcat 在没有 adb 的环境里拿不到，而"页面刷新失败"这个 toast 只带 message，
+     * 不带是哪一行抛的。写盘之后用户可以直接把文件发出来，不必连电脑。
+     * 文件位置：Android/data/&lt;包名&gt;/files/render-error.log，只追加最近 5 次。
+     */
+    private void dumpRenderFailure(Throwable failure) {
+        java.io.FileOutputStream out = null;
+        try {
+            java.io.File dir = getExternalFilesDir(null);
+            if (dir == null) return;
+            if (!dir.exists()) dir.mkdirs();
+            java.io.File file = new java.io.File(dir, "render-error.log");
+            // 只保留最近 5 次，避免无限增长
+            if (file.exists() && file.length() > 256 * 1024) file.delete();
+            java.io.StringWriter buffer = new java.io.StringWriter();
+            java.io.PrintWriter printer = new java.io.PrintWriter(buffer);
+            printer.println("==== " + new java.util.Date() + " ====");
+            printer.println("tab=" + activeTab + " account=" + selectedAccount);
+            failure.printStackTrace(printer);
+            printer.flush();
+            out = new java.io.FileOutputStream(file, true);
+            out.write(buffer.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } catch (Exception ignored) {
+            // 诊断写盘失败不能覆盖原始错误
+        } finally {
+            if (out != null) try { out.close(); } catch (Exception ignored) { }
+        }
     }
 
     private void renderPage() {
@@ -2977,7 +3012,7 @@ private void showHome() {
         runOnUiThread(() -> {
             if (isFinishing() || isDestroyed()) return;
             try { action.run(); }
-            catch (Exception e) { Log.w("Suizhang", "UI callback failed", e); toast("操作未完成：" + safeMessage(e)); }
+            catch (Exception e) { Log.w("Suizhang", "UI callback failed", e); dumpRenderFailure(e); toast("操作未完成：" + safeMessage(e)); }
         });
     }
 
