@@ -25,7 +25,11 @@ def require(label: str, condition: bool) -> None:
 
 # --- render must not be able to take the app down ---
 require("render 自身负责兜底，不再把异常抛给调用方",
-        "private void render() {" in activity and "catch (Exception e) { Log.w(\"Suizhang\", \"render failed\"" in activity)
+        "private void render() {" in activity and 'Log.w("Suizhang", "render failed", e)' in activity
+        and "private void renderPage() {" in activity)
+require("渲染失败写入可导出的堆栈文件，便于无 adb 环境排查",
+        "private void dumpRenderFailure(Throwable failure)" in activity
+        and "dumpRenderFailure(e)" in activity)
 require("渲染主体拆到 renderPage，保持 render 为受保护入口",
         "private void renderPage() {" in activity)
 
