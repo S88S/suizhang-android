@@ -2,6 +2,8 @@ package cn.suizhang.ledger;
 
 import java.nio.charset.Charset;
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.List;
 
 public final class MarketDataTest {
@@ -68,9 +70,54 @@ public final class MarketDataTest {
         check("已到账优先于公告/历史来源状态", "已到账".equals(DividendCalendarRules.statusLabel("announced", "received")));
         check("手工事件不会伪称公告", "手工记录".equals(DividendCalendarRules.statusLabel("manual", "expected")));
         check("无日期不会被误标到日历", "".equals(DividendCalendarRules.kindsForDate(null, "not-a-date", "", "2026-10-04")));
+        // Regression: save() stores <key> as String and <key>:time as Long in the same
+        // SharedPreferences. cachedQuote() enumerates by the "quote:" prefix, so it used to hand
+        // the Long ":time" entry to getString() and crash with
+        //   ClassCastException: java.lang.Long cannot be cast to java.lang.String
+        // which surfaced as "页面刷新失败" and a blank holdings page.
+        Map<String, Object> store = new LinkedHashMap<>();
+        store.put("quote:sh600519", "{\"data\":{}}");
+        store.put("quote:sh600519:time", 1700000000000L);
+        store.put("quote:hk00700", "{\"data\":{}}");
+        store.put("quote:hk00700:time", 1700000000001L);
+        MarketDataClient mixed = new MarketDataClient(new FakeContext(store));
+        // Must not throw, and must not mistake the Long timestamp for a cache body.
+        check("行情缓存枚举跳过 :time 长整型键不抛 ClassCastException",
+                mixed.cachedQuote("000001", "A股") == null);
+
 
         // chooseCached used to be asserted here. It had no production caller, so these three
         // checks were green over dead code; both the helper and its checks are gone.
         System.out.println("通过：" + passed + " 项公开数据解析/缓存断言");
+    }
+
+    /** Minimal Context/SharedPreferences pair so the cache can hold mixed String and Long values. */
+    private static final class FakeContext extends android.content.Context {
+        private final Map<String, Object> values;
+        FakeContext(Map<String, Object> values) { this.values = values; }
+        @Override public android.content.SharedPreferences getSharedPreferences(String name, int mode) {
+            return new FakePrefs(values);
+        }
+    }
+
+    private static final class FakePrefs implements android.content.SharedPreferences {
+        private final Map<String, Object> values;
+        FakePrefs(Map<String, Object> values) { this.values = values; }
+        @Override public String getString(String key, String fallback) {
+            Object v = values.get(key);
+            // Mirrors android.app.SharedPreferencesImpl: a mismatched type throws.
+            if (v == null) return fallback;
+            if (!(v instanceof String)) throw new ClassCastException(
+                    v.getClass().getName() + " cannot be cast to java.lang.String");
+            return (String) v;
+        }
+        @Override public long getLong(String key, long fallback) {
+            Object v = values.get(key);
+            return v instanceof Long ? (Long) v : fallback;
+        }
+        @Override public Map<String, ?> getAll() { return new LinkedHashMap<String, Object>(values); }
+        @Override public android.content.SharedPreferences.Editor edit() {
+            throw new UnsupportedOperationException("只读测试替身");
+        }
     }
 }
