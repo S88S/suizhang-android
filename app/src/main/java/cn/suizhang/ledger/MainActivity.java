@@ -479,7 +479,7 @@ private void showHome() {
 
     private void addHomeNextDividend(ViewGroup host, JSONObject e, boolean last) {
         if (e == null) return;
-        String payDate = e.optString("pay_date"); LocalDate dateValue = parseDate(payDate);
+        String payDate = e.optString("pay_date"); LocalDate dateValue = LedgerFormats.parseDate(payDate);
         boolean approximate = "1".equals(e.optString("pay_date_estimated")) || e.optInt("pay_date_estimated") == 1;
         String dateLabel = (approximate ? "约 " : "") + (dateValue == null ? "日期待核对" : dateValue.format(DateTimeFormatter.ofPattern("M月d日", Locale.CHINA)));
         String statusLabel = DividendCalendarRules.statusLabel(e.optString("data_class", "manual"), e.optString("status", "expected"));
@@ -494,7 +494,7 @@ private void showHome() {
         TextView name = text(holdingName, 13, INK, true);
         details.addView(name); details.addView(text("预计到账 · " + statusLabel, 10, MUTED, false), margin(0, 2, 0, 0));
         item.addView(details, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView value = text(amount(currency, e.optDouble("total")), 13, DIVIDEND, true);
+        TextView value = text(LedgerFormats.amount(currency, e.optDouble("total")), 13, DIVIDEND, true);
         value.setGravity(Gravity.END | Gravity.CENTER_VERTICAL); value.setFontFeatureSettings("tnum"); value.setSingleLine(false); value.setMaxWidth(dp(112));
         item.addView(value, new LinearLayout.LayoutParams(-2, -2));
         host.addView(item);
@@ -841,7 +841,7 @@ private void showHome() {
         boolean hasAnnualEstimate = hasAnyDividendEstimate();
         CardColumn forecast = card(); forecast.setOrientation(LinearLayout.VERTICAL);
         forecast.addView(text(LocalDate.now().getYear() + " 年分红预估", 14, INK, true));
-        forecast.addView(text(hasAnnualEstimate ? formatAmounts(annualForecast) : "暂无数据", 22,
+        forecast.addView(text(hasAnnualEstimate ? LedgerFormats.formatAmounts(annualForecast) : "暂无数据", 22,
                 hasAnnualEstimate ? DIVIDEND : MUTED, true), margin(0, 4, 0, 0));
         forecast.addView(text("按币种分别展示，不做汇率换算；预计金额不等于公告或实际到账。", 11, MUTED, false), margin(0, 5, 0, 0));
         content.addView(forecast, margin(0, 0, 0, 6));
@@ -860,7 +860,6 @@ private void showHome() {
             warn.addView(retry, new LinearLayout.LayoutParams(Math.max(dimen(R.dimen.ds_touch_target_min), Math.min(dp(120), retryWidth)), -2));
             content.addView(warn, margin(0, 0, 0, 8));
         }
-        Map<String, Double> currencyMarketValues = marketValueByCurrency(hs);
         for (JSONObject h : ranked) {
             CardColumn item = card(); item.setOrientation(LinearLayout.VERTICAL);
             MarketDataClient.Quote quote = quoteFor(h);

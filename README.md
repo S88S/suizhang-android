@@ -77,7 +77,7 @@ MIT 只覆盖本项目自有代码。下列第三方组件各自沿用其上游�
 环境：JDK 21、Android SDK Platform 36、Gradle Wrapper 8.13、AGP 8.13.2。设置 Android SDK 路径后执行：
 
 ```bash
-./gradlew --no-daemon clean assembleDebug lint testDebugUnitTest
+./gradlew --no-daemon clean assembleDebug assembleRelease lint testDebugUnitTest
 ./scripts/test-finance.sh
 bash scripts/test-market-data.sh
 bash scripts/test-dividend-forecast.sh
@@ -88,9 +88,11 @@ bash scripts/test-cost-replay.sh
 python3 scripts/test-formula-alignment.py
 python3 scripts/test-a-share-tax-coverage.py
 python3 scripts/test-backup-safety.py
+python3 scripts/test-data-integrity.py
 python3 scripts/test-ui-static.py
 python3 scripts/test-selected-tab-design.py
 python3 scripts/test-ci-artifact-policy.py
+python3 scripts/test-r8-rules.py
 python3 scripts/test-excel-backup.py
 python3 scripts/test-easternfortune-ocr.py
 python3 scripts/test-dividend-focus-ui.py
@@ -106,13 +108,13 @@ python3 scripts/test-defensive-guards.py
 python3 scripts/test-calendar-query.py
 ```
 
-CI 还会运行 `scripts/test-*.py` 并归档 JUnit 报告，但不会上传 Debug APK。
+CI 会构建 Debug 与 Release、运行全部 `scripts/test-*.py` 和 `scripts/test-*.sh` 并归档 JUnit 报告；不会上传 APK/AAB，也不会创建 GitHub Release。
 
 说明：`testDebugUnitTest` 会执行 `app/src/test` 下的 JUnit 源；1.4.12 验收记录为 6 个类 / 42 个用例，全部通过。本次 2.0 合并后的实际执行数量见下方验收记录。上面列出的项目自带脚本覆盖 JUnit 到不了的部分——解析、隐私、界面不变量与源码级守卫。另有 5 个 `scripts/test-*.sh` 编译并运行 `scripts/` 下的纯逻辑 Java 套件，需要在 PATH 上有 `javac`；1.4.11 新增的 `test-cost-replay.sh` 会连带执行 `test-cost-replay.py`。
 
 1.4.11 新增交易/分红编辑与删除的成本重算回归：`scripts/CostReplayTest.java` 用真实 `FinanceMath` 验证三种成本法各 4000 组事件——正向重放与增量维护一致、反向回推期初后重放仍一致；`scripts/test-cost-replay.py`（41 条）从源码提取真实 SQL 在内存 SQLite 上复跑，并用 Python 独立重实现重放与回推公式，覆盖 schema 5 迁移回填、四个增删改方法各自调用重放、`received_amount IS NOT NULL` 判据与同日次序稳定性。已做变异验证，12 处源码改动全部被捕获。
 
-说明：本轮 `testDebugUnitTest` 实际执行了 5 个 JUnit 测试类，共 28 个测试，0 失败、0 错误、0 跳过；其中包含日历查询和年度汇总的单元测试。下列项目自带脚本继续覆盖 SQLite 查询计划、账本格式、财务/税务、UI 层级与隐私边界。
+说明：本轮在 JDK 21 与 Android SDK Platform 36 下，`testDebugUnitTest` 实际执行了 8 个 JUnit 测试类，共 89 个测试，0 失败、0 错误、0 跳过；其中包含日历查询和年度汇总的单元测试。项目自带脚本继续覆盖 SQLite 查询计划、账本格式、财务/税务、UI 层级与隐私边界。
 
 2.0 新增选定页面方向、年度地图与“更多”入口层级回归，并保留 1.4.8 到期分红批量确认的日期规则、单事务状态更新、实收金额与持仓成本保护测试；其余回归覆盖 Excel 工作表/字段映射、文件大小限制、拒绝公式、旧 JSON 兼容、全量恢复保护，以及财务/税务、日历查询和数据源检查。APK 使用 JDK 21、Android SDK Platform 36 与 Gradle 8.13 构建；当前无连接设备或模拟器，未进行运行时点按和屏幕截图验收。
 
