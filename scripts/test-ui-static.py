@@ -39,9 +39,9 @@ require("年度视图提供空年度状态", '本年度暂无收息事件' in ca
 
 require("总览用右下角 FAB 取代通栏新增按钮", 'FloatingActionButton addHolding' in source and 'Gravity.END | Gravity.BOTTOM' in source and 'actionButton("＋ 新增持仓", true' not in home)
 require("FAB 菜单保留手动新增与券商截图识别", '"手动新增持仓", "识别券商截图"' in source and 'showHoldingEditor(null, null)' in source and 'chooseBrokerScreenshot()' in source)
-require("首页优先呈现预计年分红与持仓标的列表", 'estimatedIncomeByCurrency(false)' in home and 'sectionHeader("持仓预计年分红"' in home and 'Math.min(4, ranked.size())' in home)
+require("首页按年分红预估、近期收息、主要分红来源的顺序呈现", 'estimatedIncomeByCurrency(false)' in home and 'sectionHeader("接下来收息"' in home and 'sectionHeader("主要分红来源"' in home and home.index('sectionHeader("接下来收息"') < home.index('sectionHeader("主要分红来源"') and 'Math.min(4, ranked.size())' in home)
 require("持仓分红卡片呈现来源和股息收益信息且未知值不写作零", 'forecastSourceLabel(holding)' in home and '"暂无数据"' in home and 'gross > 0d ? LedgerFormats.amount(holding.optString("currency"), gross)' in home)
-require("首页保留近期分红预期和日历链接", 'sectionHeader("下一笔预期", "分红日历"' in home and 'db.nextDividends(selectedAccount' in home)
+require("首页近期收息使用紧凑行且保留日历链接", 'sectionHeader("接下来收息", "看日历"' in home and 'db.nextDividends(selectedAccount' in home and 'addHomeNextDividend' in home)
 require("无持仓状态不重复显示新增按钮", 'emptyInfoCard("还没有持仓"' in home and 'emptyInfoCard("还没有持仓记录"' in holdings)
 require("持仓页新增入口为次级按钮且工具入口保留", 'actionButton("新增持仓", false' in holdings and 'actionButton("更多操作", false' in holdings)
 tools = section("private void showHoldingsMoreActions()", "private void holdingMenu(")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Source-level checks for the 1.4.6 Miuix calendar, gold palette, and accessible responsive actions."""
+"""Source-level checks for the 2.0 Miuix calendar, gold palette, and accessible responsive actions."""
 from pathlib import Path
 import re
 import xml.etree.ElementTree as ET
@@ -30,7 +30,7 @@ editor = section("private void showHoldingEditor(", "private interface CatalogPi
 transactions = section("private void showTransactions()", "private void showBoundaries()")
 quick_actions = section("private void showHoldingQuickActions()", "private void addTaxToggle()")
 
-require("版本递增到 1.4.12 / code 26", "versionName '1.4.12'" in BUILD and re.search(r"versionCode\s+26\b", BUILD) is not None)
+require("版本递增到 2.0 / code 27", "versionName '2.0'" in BUILD and re.search(r"versionCode\s+27\b", BUILD) is not None)
 require("日历切换控件独占同一卡片，不再显示说明或账户范围行", "calendarControlPanel()" in calendar and "calendarHelpRow()" not in MAIN and "日历说明" not in MAIN and "accountScopeLabel()" not in controls)
 require("Material 单选组始终要求保留一个已选视图", "group.setSingleSelection(true)" in toggle and "group.setSelectionRequired(true)" in toggle and "addOnButtonCheckedListener" in toggle)
 require("月历和年度总览均保留并共享可用宽度", 'String[] labels = {"月历", "年度总览"}' in toggle and "new LinearLayout.LayoutParams(0, dimen(R.dimen.ds_touch_target_min), 1)" in toggle)
@@ -76,4 +76,4 @@ for theme, values in colors.items():
     require(f"{theme} 麦金分红强调与涨红跌绿行情色各自独立", values["app_market_up"] != values["app_dividend_emphasis"] and values["app_calendar_received"] == values["app_dividend_emphasis"])
     require(f"{theme} 分红主卡文字单独配置", "app_dividend_on_hero" in values)
 
-print("通过：Miuix 日历/麦金主题、响应式按钮、行情语义与字体许可护栏的源码级回归；未替代 Android 设备目视验收。")
+print("通过：2.0 Miuix 日历/麦金主题、响应式按钮、行情语义与字体许可护栏的源码级回归；未替代 Android 设备目视验收。")

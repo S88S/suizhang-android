@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression checks for the 1.4.5 Miuix calendar hierarchy and wheat-gold UI."""
+"""Regression checks for the selected 2.0 calendar hierarchy and wheat-gold UI."""
 from pathlib import Path
 import re
 import xml.etree.ElementTree as ET
@@ -24,9 +24,11 @@ controls = section("private CardColumn calendarControlPanel()", "private Materia
 toggle = section("private MaterialButtonToggleGroup calendarViewToggle()", "private MaterialButton calendarNavButton(")
 context_button = section("private MaterialButton calendarContextButton(", "private void showCalendarYear()")
 calendar = section("private void showCalendar()", "private CardColumn calendarControlPanel()")
+year_map = section("private void showCalendarYear()", "private int countPendingReceived(")
 render = section("private void render()", "private MiuixBottomNavigatorView bottomNav()")
 
-require("新包版本递增且应用身份可覆盖升级", "versionName '1.4.12'" in BUILD and re.search(r"versionCode\s+26\b", BUILD) is not None and "applicationId 'cn.suizhang.ledger'" in BUILD and "applicationIdSuffix '.debug'" in BUILD)
+require("2.0 包版本递增且应用身份可覆盖升级", "versionName '2.0'" in BUILD and re.search(r"versionCode\s+27\b", BUILD) is not None and "applicationId 'cn.suizhang.ledger'" in BUILD and "applicationIdSuffix '.debug'" in BUILD)
+require("年度现金流地图默认显示、三列覆盖全年并可展开所选月派息详情", "private boolean calendarYearView = true;" in MAIN and "monthGrid.setColumnCount(3)" in year_map and 'for (int monthIndex = 1; monthIndex <= 12; monthIndex++)' in year_map and "db.dividends(selectedAccount, ym)" in year_map and 'calendarYearView = true' in year_map and "calendarMonthSpeech" in year_map)
 require("继续使用现有 Material Components Views 依赖", "com.google.android.material:material:1.14.0" in BUILD and "MaterialButtonToggleGroup" in MAIN and "androidx.compose" not in BUILD)
 require("麦金色作为浅/深主题主色，日历与行情语义另保留", '"primary"' in DESIGN and "#8A5E0B" in DESIGN and "#F0C45B" in DESIGN and "#B3261E" in DESIGN and "#FF8A80" in DESIGN)
 require("日历视图组保持单选并使用图标", "group.setSingleSelection(true)" in toggle and "group.setSelectionRequired(true)" in toggle and "ic_nav_calendar" in toggle and "ic_calendar_view_month_24" in toggle)
@@ -68,4 +70,4 @@ for theme in ("values/colors.xml", "values-night/colors.xml"):
     dividend = colors["app_dividend_emphasis"]
     require(f"{theme} 麦金主色与涨红跌绿市场色分离", colors["app_primary"].upper() == ("8A5E0B" if theme == "values/colors.xml" else "F0C45B") and up != dividend and int(up[0:2], 16) > int(up[2:4], 16) * 1.4 and int(down[2:4], 16) > int(down[0:2], 16) * 1.4)
 
-print("通过：1.4.6 日历层级、麦金主题、Miuix 日历卡片、本地图标和业务交互源码回归；不替代真机屏幕验收。")
+print("通过：2.0 年度地图、麦金主题、Miuix 日历卡片、本地图标和业务交互源码回归；不替代真机屏幕验收。")
