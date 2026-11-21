@@ -182,7 +182,7 @@ final class MarketDataClient {
 
     Quote cachedQuote(String code, String market) {
         for (String key : cache.getAll().keySet()) {
-            if (!key.startsWith("quote:")) continue;
+            if (!key.startsWith("quote:") || key.endsWith(":time")) continue;
             CachedRaw raw = cached(key);
             if (raw == null) continue;
             Security sec = new Security(code, "", market, currency(market));
@@ -338,7 +338,12 @@ final class MarketDataClient {
     }
 
     private CachedRaw cached(String key) {
-        String body = cache.getString(key, null); long time = cache.getLong(key + ":time", 0);
+        // save() writes <key> as a String and <key>:time as a Long. Enumerating keys by prefix
+        // therefore reaches a Long entry, and getString on it throws ClassCastException.
+        // Only strings are cache bodies, so read the raw value and skip anything else.
+        Object raw = cache.getAll().get(key);
+        if (!(raw instanceof String)) return null;
+        String body = (String) raw; long time = cache.getLong(key + ":time", 0);
         return body == null ? null : new CachedRaw(body, time);
     }
     private void save(String key, String body) { cache.edit().putString(key, body).putLong(key + ":time", System.currentTimeMillis()).apply(); }
