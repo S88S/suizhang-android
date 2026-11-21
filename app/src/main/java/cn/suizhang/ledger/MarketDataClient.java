@@ -181,9 +181,11 @@ final class MarketDataClient {
     }
 
     Quote cachedQuote(String code, String market) {
-        for (String key : cache.getAll().keySet()) {
+        // Snapshot once: getAll() copies the whole map, so calling it per key would be quadratic.
+        Map<String, ?> all = cache.getAll();
+        for (String key : all.keySet()) {
             if (!key.startsWith("quote:") || key.endsWith(":time")) continue;
-            CachedRaw raw = cached(key);
+            CachedRaw raw = cached(all, key);
             if (raw == null) continue;
             Security sec = new Security(code, "", market, currency(market));
             for (Quote q : parseQuotes(raw.body, Collections.singletonList(sec), raw.time, true)) if (q.code.equalsIgnoreCase(code)) return q;
@@ -337,11 +339,13 @@ final class MarketDataClient {
         }
     }
 
-    private CachedRaw cached(String key) {
+    private CachedRaw cached(String key) { return cached(cache.getAll(), key); }
+
+    private CachedRaw cached(Map<String, ?> all, String key) {
         // save() writes <key> as a String and <key>:time as a Long. Enumerating keys by prefix
         // therefore reaches a Long entry, and getString on it throws ClassCastException.
         // Only strings are cache bodies, so read the raw value and skip anything else.
-        Object raw = cache.getAll().get(key);
+        Object raw = all.get(key);
         if (!(raw instanceof String)) return null;
         String body = (String) raw; long time = cache.getLong(key + ":time", 0);
         return body == null ? null : new CachedRaw(body, time);
