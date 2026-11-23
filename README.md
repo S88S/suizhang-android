@@ -1,18 +1,24 @@
 # 穗账 Android
 
-**当前源码：2.0-debug（versionCode 28）**。本版基于 1.4.12，仅调整信息呈现与页面层级；不改金融公式、数据来源、数据库 schema 5、权限、真实账本数据或备份格式。暖麦金主题、Excel `.xlsx` 完整账本工作簿和旧版 JSON 导入兼容继续保留。包名 `cn.suizhang.ledger.debug`、最低 Android 10/API 29。**公开仓库只同步源码和文档，不包含 APK 或用户私有账本数据。**公式与税务边界见 [`FORMULA_ALIGNMENT_1.4.3.md`](FORMULA_ALIGNMENT_1.4.3.md)，前序数据迁移说明见 [`UPGRADE_1.4.12.md`](UPGRADE_1.4.12.md)，设计准则见 [`DESIGN.md`](DESIGN.md)，已知问题见 [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md)。
+**当前源码：2.0.1-debug（versionCode 29）**。本版基于 2.0，仅精修信息呈现与页面层级；不改金融公式、数据来源、数据库 schema 5、权限、真实账本数据或备份格式。暖麦金主题、Excel `.xlsx` 完整账本工作簿和旧版 JSON 导入兼容继续保留。包名 `cn.suizhang.ledger.debug`、最低 Android 10/API 29。**公开仓库只同步源码、文档和经验证的运行截图，不包含 APK 或用户私有账本数据。**公式与税务边界见 [`FORMULA_ALIGNMENT_1.4.3.md`](FORMULA_ALIGNMENT_1.4.3.md)，前序数据迁移说明见 [`UPGRADE_1.4.12.md`](UPGRADE_1.4.12.md)，设计准则见 [`DESIGN.md`](DESIGN.md)，已知问题见 [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md)。
 
-## 2.0 界面预览
+## 2.0.1 界面预览
 
-![总览页示意（方向 1）](docs/images/2.0-ui-preview/overview-direction-1.png)
+### 静态设计稿（非应用运行截图）
 
-> 界面示意，股票/金额为虚构示例数据。以上为静态原型，不是应用实际运行截图。
+![总览页静态设计稿（方向 1，虚构示例数据）](docs/images/2.0-ui-preview/overview-direction-1.png)
 
-其他已选页面（方向 2）：[持仓示意](docs/images/2.0-ui-preview/holdings-direction-2.png) · [日历示意](docs/images/2.0-ui-preview/calendar-direction-2.png) · [更多示意](docs/images/2.0-ui-preview/more-direction-2.png)。这些页面同样是界面示意，股票/金额为虚构示例数据。
+> 以下仍是静态概念稿，不是穗账 Android 实际运行截图；其中证券和金额均为虚构示例数据。
+
+其他已选页面（方向 2）：[持仓静态设计稿](docs/images/2.0-ui-preview/holdings-direction-2.png) · [日历静态设计稿](docs/images/2.0-ui-preview/calendar-direction-2.png) · [更多静态设计稿](docs/images/2.0-ui-preview/more-direction-2.png)。
+
+### Android 实际运行截图（2.0.1）
+
+本版尚未完成模拟器/真机页面渲染验收，因此目前没有实际运行截图；待在可运行 Android 35 的设备上验收后再补充，不会用静态设计稿代替运行截图。
 
 ## 主要功能
 
-- **2.0 选定页面改版**：总览按“年度预估 → 近期收息 → 主要分红来源”排列；日历默认显示按币种区分已到账/预计的年度现金流地图，选月后留在地图并显示派息日记录，同时保留逐日月历；持仓页首先展示按币种分列的年度分红预估并按原毛额口径排序；更多页以本机账本状态开场。只改展示层级，保留原数据和操作。
+- **2.0.1 选定页面精修**：总览沿用方向 1，摘要卡垂直内距温和收紧且不缩字号或48dp指标行；持仓、日历、更多沿用方向 2。底部 Tab 选中态用强调色与粗体区分；年度日历先显示月度现金流地图、图例和月格，再显示年度收息概况；“回到今年”靠近年份但保留48dp触控区域。持仓页仍按币种展示年度分红预估；仅调整呈现，保留原业务逻辑与数据操作。
 
 - **1.4.12 评审整改**：修复建仓日时区截断、负实收金额崩溃、导入字段白名单缺失、数据库降级未拒绝、公开分红写入非原子、导出一致性快照缺失、手工分红登记数量校验、加权均价重复实现与有限性校验、分红预测 2100 年后年份识别等问题，并为通知增加锁屏隐藏。数据库 schema 保持 **5**、无新迁移；「有意不改」的项见 [`UPGRADE_1.4.12.md`](UPGRADE_1.4.12.md)。
 
@@ -99,6 +105,7 @@ python3 scripts/test-backup-safety.py
 python3 scripts/test-data-integrity.py
 python3 scripts/test-ui-static.py
 python3 scripts/test-selected-tab-design.py
+python3 scripts/test-2.1-ui-refinement.py
 python3 scripts/test-ci-artifact-policy.py
 python3 scripts/test-r8-rules.py
 python3 scripts/test-excel-backup.py
@@ -118,14 +125,14 @@ python3 scripts/test-calendar-query.py
 
 CI 会构建 Debug 与 Release、运行全部 `scripts/test-*.py` 和 `scripts/test-*.sh` 并归档 JUnit 报告；不会上传 APK/AAB，也不会创建 GitHub Release。
 
-说明：`testDebugUnitTest` 会执行 `app/src/test` 下的 JUnit 源；1.4.12 验收记录为 6 个类 / 42 个用例，全部通过。本次 2.0 合并后的实际执行数量见下方验收记录。上面列出的项目自带脚本覆盖 JUnit 到不了的部分——解析、隐私、界面不变量与源码级守卫。另有 5 个 `scripts/test-*.sh` 编译并运行 `scripts/` 下的纯逻辑 Java 套件，需要在 PATH 上有 `javac`；1.4.11 新增的 `test-cost-replay.sh` 会连带执行 `test-cost-replay.py`。
+说明：`testDebugUnitTest` 会执行 `app/src/test` 下的 JUnit 源；1.4.12 历史验收记录为 6 个类 / 42 个用例。本次 2.0.1 的实际执行数量见下方验收记录。项目自带脚本覆盖 JUnit 到不了的解析、隐私、界面不变量与源码级守卫。另有 `scripts/test-*.sh` 编译并运行 `scripts/` 下的纯逻辑 Java 套件，需要在 PATH 上有 `javac`；`test-cost-replay.sh` 会连带执行 `test-cost-replay.py`。
 
 1.4.11 新增交易/分红编辑与删除的成本重算回归：`scripts/CostReplayTest.java` 用真实 `FinanceMath` 验证三种成本法各 4000 组事件——正向重放与增量维护一致、反向回推期初后重放仍一致；`scripts/test-cost-replay.py`（41 条）从源码提取真实 SQL 在内存 SQLite 上复跑，并用 Python 独立重实现重放与回推公式，覆盖 schema 5 迁移回填、四个增删改方法各自调用重放、`received_amount IS NOT NULL` 判据与同日次序稳定性。已做变异验证，12 处源码改动全部被捕获。
 
-说明：本轮在 JDK 21 与 Android SDK Platform 36 下，`testDebugUnitTest` 实际执行了 8 个 JUnit 测试类，共 89 个测试，0 失败、0 错误、0 跳过；其中包含日历查询和年度汇总的单元测试。项目自带脚本继续覆盖 SQLite 查询计划、账本格式、财务/税务、UI 层级与隐私边界。
+说明：本轮在 JDK 21、Android SDK Platform 36、Gradle 8.13 下，`testDebugUnitTest` 实际执行了 9 个 JUnit 测试类、93 个测试，0 失败、0 错误、0 跳过；其中包含日历查询和年度汇总测试。另有 32 个 `scripts/test-*.py` / `scripts/test-*.sh` 全部通过，覆盖 SQLite 查询计划、账本格式、财务/税务、UI 层级与隐私边界。
 
-2.0 新增选定页面方向、年度地图与“更多”入口层级回归，并保留 1.4.8 到期分红批量确认的日期规则、单事务状态更新、实收金额与持仓成本保护测试；其余回归覆盖 Excel 工作表/字段映射、文件大小限制、拒绝公式、旧 JSON 兼容、全量恢复保护，以及财务/税务、日历查询和数据源检查。APK 使用 JDK 21、Android SDK Platform 36 与 Gradle 8.13 构建；当前无连接设备或模拟器，未进行运行时点按和屏幕截图验收。
+2.0.1 新增底部导航选中态、年度地图信息顺序、年份控件间距及总览密度回归；既有测试继续保护 1.4.8 到期分红批量确认、Excel/JSON 备份、财务/税务与隐私边界。APK 使用 JDK 21、Android SDK Platform 36 与 Gradle 8.13 构建。当前未完成运行时点按、截图渲染及窄屏/大字体设备验收，静态设计稿不可视作运行截图。
 
 1.3.5 新增离线年度收息汇总用例：跨年/年末边界、空数据、币种分列、已到账/预计分离和年度显示范围；UI 静态回归验证月/年切换、账户范围、12 个月跳转、文字标记与估算语义。
 
-当前工作区未连接 Android 设备，**没有进行真机/模拟器点击、用户截图渲染复现或原位迁移测试**。表单继续使用限高滚动窗体、wrap-content 输入容器和系统键盘 resize，源码检查了触控目标与动态文字规则，但不能替代小屏/大字体实机验证。安装后若发现布局问题，请提供 Android 版本、系统字体缩放与复现截图；勿为验证而随意更改系统设置。交付 APK 不是 Play 商店 release 签名包。
+本轮环境未能启动 Android 模拟器，也未连接真机，因此**没有进行页面点击、截图渲染或原位迁移验收**。源码检查和静态回归不能替代小屏、大字体与 TalkBack 实测。静态预览中的证券和金额均为虚构示例数据；安装后若发现布局问题，请提供 Android 版本、系统字体缩放与复现截图。交付 APK 不是 Play 商店签名包。

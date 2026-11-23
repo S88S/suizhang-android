@@ -27,7 +27,7 @@ calendar = section("private void showCalendar()", "private CardColumn calendarCo
 year_map = section("private void showCalendarYear()", "private int countPendingReceived(")
 render = section("private void render()", "private MiuixBottomNavigatorView bottomNav()")
 
-require("2.0 包版本递增且应用身份可覆盖升级", "versionName '2.0'" in BUILD and re.search(r"versionCode\s+28\b", BUILD) is not None and "applicationId 'cn.suizhang.ledger'" in BUILD and "applicationIdSuffix '.debug'" in BUILD)
+require("2.0.1 包版本递增且应用身份可覆盖升级", "versionName '2.0.1'" in BUILD and re.search(r"versionCode\s+29\b", BUILD) is not None and "applicationId 'cn.suizhang.ledger'" in BUILD and "applicationIdSuffix '.debug'" in BUILD)
 require("年度现金流地图默认显示、三列覆盖全年并可展开所选月派息详情", "private boolean calendarYearView = true;" in MAIN and "monthGrid.setColumnCount(3)" in year_map and 'for (int monthIndex = 1; monthIndex <= 12; monthIndex++)' in year_map and "db.dividends(selectedAccount, ym)" in year_map and 'calendarYearView = true' in year_map and "calendarMonthSpeech" in year_map)
 require("继续使用现有 Material Components Views 依赖", "com.google.android.material:material:1.14.0" in BUILD and "MaterialButtonToggleGroup" in MAIN and "androidx.compose" not in BUILD)
 require("麦金色作为浅/深主题主色，日历与行情语义另保留", '"primary"' in DESIGN and "#8A5E0B" in DESIGN and "#F0C45B" in DESIGN and "#B3261E" in DESIGN and "#FF8A80" in DESIGN)

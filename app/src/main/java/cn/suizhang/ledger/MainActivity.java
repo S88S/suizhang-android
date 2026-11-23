@@ -390,18 +390,43 @@ public class MainActivity extends AppCompatActivity {
         nav.setTitleSize(navLabelSp());
         nav.setIconSize(dp(22));
         nav.setBackgroundColor(getColor(R.color.app_surface));
-        nav.check("holdings".equals(activeTab) ? R.id.nav_holdings : "calendar".equals(activeTab) ? R.id.nav_calendar : ("more".equals(activeTab) || "stats".equals(activeTab) || "plan".equals(activeTab)) ? R.id.nav_more : R.id.nav_home);
+        int selectedItem = "holdings".equals(activeTab) ? R.id.nav_holdings : "calendar".equals(activeTab) ? R.id.nav_calendar : ("more".equals(activeTab) || "stats".equals(activeTab) || "plan".equals(activeTab)) ? R.id.nav_more : R.id.nav_home;
+        nav.check(selectedItem);
+        applyBottomNavigationSelection(nav, selectedItem);
         nav.setOnItemSelectedListener((item, fromUser) -> {
-            int selectedItem = item.getId();
-            if (selectedItem == R.id.nav_holdings) activeTab = "holdings";
-            else if (selectedItem == R.id.nav_calendar) activeTab = "calendar";
-            else if (selectedItem == R.id.nav_more) activeTab = "more";
+            int targetItem = item.getId();
+            if (targetItem == R.id.nav_holdings) activeTab = "holdings";
+            else if (targetItem == R.id.nav_calendar) activeTab = "calendar";
+            else if (targetItem == R.id.nav_more) activeTab = "more";
             else activeTab = "home";
             render();
             return true;
         });
         nav.setContentDescription("主要页面导航");
         return nav;
+    }
+
+    private void applyBottomNavigationSelection(MiuixBottomNavigatorView nav, int selectedItemId) {
+        int selectedColor = getColor(R.color.app_primary);
+        int idleColor = getColor(R.color.app_on_surface_variant);
+        for (int index = 0; index < nav.getChildCount(); index++) {
+            View item = nav.getChildAt(index);
+            if (!(item instanceof ViewGroup)) continue;
+            boolean selected = item.getId() == selectedItemId;
+            item.setSelected(selected);
+            ViewGroup itemGroup = (ViewGroup) item;
+            View icon = itemGroup.getChildAt(0);
+            if (icon instanceof ImageView) {
+                ((ImageView) icon).setColorFilter(selected ? selectedColor : idleColor, android.graphics.PorterDuff.Mode.SRC_IN);
+            }
+            View label = itemGroup.getChildAt(1);
+            if (label instanceof TextView) {
+                TextView title = (TextView) label;
+                title.setTextColor(selected ? selectedColor : idleColor);
+                title.setTypeface(Typeface.create(appTypeface, selected ? Typeface.BOLD : Typeface.NORMAL));
+                item.setContentDescription(title.getText() + (selected ? "，已选中" : "，未选中"));
+            }
+        }
     }
 
     /**
@@ -423,7 +448,7 @@ private void showHome() {
         titleParams.topMargin = dimen(R.dimen.ds_home_heading_gap);
         homeHeading.addView(homeTitle, titleParams);
         LinearLayout.LayoutParams headingParams = new LinearLayout.LayoutParams(-1, -2);
-        headingParams.topMargin = dp(2); headingParams.bottomMargin = dp(8);
+        headingParams.topMargin = dp(2); headingParams.bottomMargin = dimen(R.dimen.ds_space_micro);
         content.addView(homeHeading, headingParams);
         JSONArray hs = db.holdings(selectedAccount);
         Map<String, Double> annual = estimatedIncomeByCurrency(false); Map<String, Double> costs = costByCurrency();
@@ -448,7 +473,7 @@ private void showHome() {
             addHeroDivider(hero);
             addOverviewMetricGrid(hero, metricIds, metricValues);
         }
-        content.addView(heroSurface, margin(0, 4, 0, 8));
+        content.addView(heroSurface, margin(0, 4, 0, 4));
 
         sectionHeader("接下来收息", "看日历", () -> { activeTab = "calendar"; render(); });
         JSONArray next = db.nextDividends(selectedAccount, LocalDate.now().toString(), 3);
@@ -1298,11 +1323,11 @@ private void showHome() {
         MaterialButton button = new MaterialButton(this); button.setText(label); button.setTextSize(12); button.setAllCaps(false);
         button.setInsetTop(0); button.setInsetBottom(0); button.setInsetLeft(0); button.setInsetRight(0);
         button.setMinHeight(dimen(R.dimen.ds_touch_target_min)); button.setMinimumHeight(dimen(R.dimen.ds_touch_target_min));
-        button.setMinWidth(dimen(R.dimen.ds_touch_target_min)); button.setMinimumWidth(dimen(R.dimen.ds_touch_target_min)); button.setGravity(Gravity.CENTER);
+        button.setMinWidth(dimen(R.dimen.ds_touch_target_min)); button.setMinimumWidth(dimen(R.dimen.ds_touch_target_min)); button.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL);
         button.setIconResource(iconResource); button.setIconSize(dp(16)); button.setIconPadding(dp(4)); button.setIconGravity(MaterialButton.ICON_GRAVITY_TEXT_START);
         button.setIconTint(ColorStateList.valueOf(getColor(R.color.app_primary))); button.setTextColor(getColor(R.color.app_primary));
         button.setBackgroundTintList(ColorStateList.valueOf(android.graphics.Color.TRANSPARENT)); button.setStrokeWidth(0);
-        button.setPaddingRelative(dp(4), 0, dp(4), 0);
+        button.setPaddingRelative(dp(4), dimen(R.dimen.ds_space_micro), dp(4), 0);
         button.setContentDescription(description); button.setOnClickListener(v -> action.run()); return button;
     }
 
@@ -1311,7 +1336,9 @@ private void showHome() {
         yearHead.addView(calendarNavButton(R.drawable.ic_chevron_left_24, "上一年", () -> shiftYear(-1)), new LinearLayout.LayoutParams(dp(48), dp(48)));
         LinearLayout titleBox = new LinearLayout(this); titleBox.setOrientation(LinearLayout.VERTICAL); titleBox.setGravity(Gravity.CENTER);
         TextView title = text(year + " 年", 18, INK, true); title.setGravity(Gravity.CENTER); titleBox.addView(title);
-        MaterialButton current = calendarContextButton("回到今年", R.drawable.ic_today_24, "回到今年", () -> { year = LocalDate.now().getYear(); calendarYearView = true; render(); }); titleBox.addView(current);
+        MaterialButton current = calendarContextButton("回到今年", R.drawable.ic_today_24, "回到今年", () -> { year = LocalDate.now().getYear(); calendarYearView = true; render(); });
+        LinearLayout.LayoutParams currentParams = new LinearLayout.LayoutParams(-2, dimen(R.dimen.ds_touch_target_min));
+        currentParams.topMargin = dimen(R.dimen.ds_space_micro); titleBox.addView(current, currentParams);
         yearHead.addView(titleBox, new LinearLayout.LayoutParams(0, -2, 1));
         yearHead.addView(calendarNavButton(R.drawable.ic_chevron_right_24, "下一年", () -> shiftYear(1)), new LinearLayout.LayoutParams(dp(48), dp(48)));
         content.addView(yearHead, margin(0, 0, 0, 8));
@@ -1331,17 +1358,16 @@ private void showHome() {
                     () -> confirmMarkReceivedBatch(rows)), margin(0, 8, 0, 0));
             overview.addView(text("只把状态改为已到账，不填写实收金额，因此不会触发分红摊薄成本。金额仍需在月历逐笔补录。", 10, MUTED, false), margin(0, 5, 0, 0));
         }
-        content.addView(overview, margin(0, 0, 0, 10));
-
+        content.addView(text("月度现金流", 15, INK, true), margin(0, 2, 0, 5));
         LinearLayout legend = row(); legend.setGravity(Gravity.CENTER_VERTICAL);
         legend.addView(text("■ 已到账", 10, getColor(R.color.app_calendar_received), true));
         legend.addView(text("    ■ 预计 / 待收", 10, getColor(R.color.app_calendar_estimated), true));
         content.addView(legend, margin(2, 0, 0, 6));
         if (!summary.hasEvents()) content.addView(text("本年度暂无收息事件；仍可选择月份查看派息记录。", 12, MUTED, false), margin(0, 4, 0, 6));
-        content.addView(text("月度现金流", 15, INK, true), margin(0, 2, 0, 5));
         GridLayout monthGrid = new GridLayout(this); monthGrid.setColumnCount(3); monthGrid.setUseDefaultMargins(false);
         for (int monthIndex = 1; monthIndex <= 12; monthIndex++) addCalendarYearMonth(summary, monthIndex, monthGrid);
         content.addView(monthGrid, margin(0, 0, 0, 8));
+        content.addView(overview, margin(0, 0, 0, 10));
 
         CalendarYearSummary.Month selectedSummary = summary.month(month);
         String ym = String.format(Locale.US, "%04d-%02d", year, month);
