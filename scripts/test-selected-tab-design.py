@@ -36,11 +36,10 @@ require("总览近期事件使用真实派息记录并紧凑呈现日期、标�
 require("近期收息标的不被不可恢复地单行截断", "name.setMaxLines(1)" not in home_event and "name.setEllipsize" not in home_event)
 require("近期收息金额不设固定行数上限或省略", "value.setMaxLines(" not in home_event and "value.setEllipsize" not in home_event)
 
-holdings_forecast = holdings.find("年分红预估")
 holdings_actions = holdings.find('actionButton("新增持仓"')
 holdings_loop = holdings.find("for (JSONObject h : ranked)")
-require("持仓页首先展示本年预计分红且按币种分列、无估算时不写零", holdings_forecast >= 0 and holdings_forecast < holdings_actions and "estimatedIncomeByCurrency(false)" in holdings and "formatAmounts(annualForecast)" in holdings and "hasAnyDividendEstimate()" in holdings and '"暂无数据"' in holdings)
-require("持仓页在年度摘要后保留原操作，再展示按年分红排序的持仓", holdings_forecast >= 0 and holdings_actions > holdings_forecast and holdings_loop > holdings_actions and "Collections.sort(ranked" in holdings and "annualOf(b, false)" in holdings and "ranked.add(holding)" in holdings)
+require("持仓页移除重复年度总计并保留逐持仓预计分红", "estimatedIncomeByCurrency(false)" not in holdings and "hasAnyDividendEstimate()" not in holdings and "annualForecast" not in holdings and "预计年分红" in holdings and 'item.addView(text("预计年分红  "' in holdings)
+require("持仓页保留账户范围、原操作及按年分红排序的持仓", "accountScopeLabel()" in holdings and holdings_actions >= 0 and holdings_loop > holdings_actions and "Collections.sort(ranked" in holdings and "annualOf(b, false)" in holdings and "ranked.add(holding)" in holdings)
 require("持仓页保留本机真实数据、涨红跌绿、原指标与每项编辑/更多操作", all(token in holdings for token in ("db.holdings(selectedAccount)", "marketValueByCurrency(hs)", "MARKET_UP", "MARKET_DOWN", "annualOf(h, false)", "预计年分红", 'actionButton("编辑"', 'actionButton("更多"')))
 
 require("日历默认显示年度现金流地图且配置恢复时保持默认", "private boolean calendarYearView = true;" in MAIN and 'getBoolean("ui_calendar_year_view", true)' in MAIN)
@@ -54,7 +53,7 @@ require("更多页统计与规划通过紧凑入口保留原功能", all(token i
 require("更多页账户、税务、证券搜索、Excel备份及许可/流水入口保留", all(token in more for token in ("showAccountCard()", "showTaxSettingsCard()", "showCatalogCard()", "showBackupCard()", "showOpenSourceCard()", "showTransactions()", "showBoundaries()")))
 require("更多页分组涵盖账户/备份、税务/规划、证券/交易与隐私/许可", all(token in more for token in ("账户与备份", "税务与统计规划", "证券与交易", "隐私与许可")))
 
-require("Android 主版本更新为 2.0 且 versionCode 单调递增", "versionName '2.0'" in BUILD and re.search(r"versionCode\s+27\b", BUILD) is not None)
-require("README 同步标注 2.0 且设计文档更新总览顺序", "2.0-debug（versionCode 27）" in README and '"下一笔预期"' not in DESIGN[DESIGN.index('"home_reading_order"'):DESIGN.index('"holding_metrics"')])
+require("Debug 安装包升至 versionCode 28", "versionName '2.0'" in BUILD and re.search(r"versionCode\s+28\b", BUILD) is not None)
+require("README 同步标注 versionCode 28 且设计文档更新总览顺序", "2.0-debug（versionCode 28）" in README and '"下一笔预期"' not in DESIGN[DESIGN.index('"home_reading_order"'):DESIGN.index('"holding_metrics"')])
 
 print("通过：选定方向的主要 Tab 层级与版本回归；不替代设备视觉验收。")

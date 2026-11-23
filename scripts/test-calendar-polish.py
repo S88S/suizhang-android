@@ -30,7 +30,7 @@ editor = section("private void showHoldingEditor(", "private interface CatalogPi
 transactions = section("private void showTransactions()", "private void showBoundaries()")
 quick_actions = section("private void showHoldingQuickActions()", "private void addTaxToggle()")
 
-require("版本递增到 2.0 / code 27", "versionName '2.0'" in BUILD and re.search(r"versionCode\s+27\b", BUILD) is not None)
+require("版本递增到 2.0 / code 28", "versionName '2.0'" in BUILD and re.search(r"versionCode\s+28\b", BUILD) is not None)
 require("日历切换控件独占同一卡片，不再显示说明或账户范围行", "calendarControlPanel()" in calendar and "calendarHelpRow()" not in MAIN and "日历说明" not in MAIN and "accountScopeLabel()" not in controls)
 require("Material 单选组始终要求保留一个已选视图", "group.setSingleSelection(true)" in toggle and "group.setSelectionRequired(true)" in toggle and "addOnButtonCheckedListener" in toggle)
 require("月历和年度总览均保留并共享可用宽度", 'String[] labels = {"月历", "年度总览"}' in toggle and "new LinearLayout.LayoutParams(0, dimen(R.dimen.ds_touch_target_min), 1)" in toggle)
@@ -48,7 +48,7 @@ require("回到今天/今年保留至少 48dp 触控目标和可访问名称", "
 require("月份/年份箭头与回到当前使用相同的轻量透明底样式", "android.graphics.Color.TRANSPARENT" in section("private MaterialButton calendarNavButton(", "private void showCalendarYear()") and "android.graphics.Color.TRANSPARENT" in context_button and "dp(18)" in section("private MaterialButton calendarNavButton(", "private void showCalendarYear()"))
 require("已移除的日历说明图标不再绑定到切换卡", "R.drawable.ic_info_24" not in controls)
 scope_text = section("private String accountScopeLabel()", "private String accessibilityPaneTitle()")
-require("账户范围提示保留在持仓页，日历控件组不再重复显示", 'return "账户范围：" + accountLabel() + "（在总览切换）"' in scope_text and "accountScopeLabel()" not in controls and 'content.addView(text(accountScopeLabel()' in holdings)
+require("账户范围提示保留在持仓页并使用字号令牌，日历控件组不再重复显示", 'return "账户范围：" + accountLabel() + "（在总览切换）"' in scope_text and "accountScopeLabel()" not in controls and 'content.addView(tokenText(accountScopeLabel(), R.dimen.ds_type_metadata' in holdings)
 require("账户筛选继续由总览全局范围控制月历和年度查询", "db.dividends(selectedAccount, ym)" in calendar and "db.dividendsInYear(selectedAccount, year)" in MAIN)
 require("公开同步和手工录入入口保留完整读屏名称及本地图标", 'actionButton("同步公开分红"' in calendar and 'actionButton("手工录入"' in calendar and 'setContentDescription("更新公开分红数据")' in calendar and "ic_refresh_24" in calendar and "ic_edit_note_24" in calendar)
 require("加号新增持仓仍可手动新增和识别截图", 'setItems(new String[]{"手动新增持仓", "识别券商截图"}' in quick_actions and "chooseBrokerScreenshot()" in quick_actions)

@@ -1,6 +1,14 @@
 # 穗账 Android
 
-**当前源码：2.0-debug（versionCode 27）**。本版基于 1.4.12，仅调整信息呈现与页面层级；不改金融公式、数据来源、数据库 schema 5、权限、真实账本数据或备份格式。暖麦金主题、Excel `.xlsx` 完整账本工作簿和旧版 JSON 导入兼容继续保留。包名 `cn.suizhang.ledger.debug`、最低 Android 10/API 29。**公开仓库只同步源码和文档，不包含 APK 或用户私有账本数据。**公式与税务边界见 [`FORMULA_ALIGNMENT_1.4.3.md`](FORMULA_ALIGNMENT_1.4.3.md)，前序数据迁移说明见 [`UPGRADE_1.4.12.md`](UPGRADE_1.4.12.md)，设计准则见 [`DESIGN.md`](DESIGN.md)，已知问题见 [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md)。
+**当前源码：2.0-debug（versionCode 28）**。本版基于 1.4.12，仅调整信息呈现与页面层级；不改金融公式、数据来源、数据库 schema 5、权限、真实账本数据或备份格式。暖麦金主题、Excel `.xlsx` 完整账本工作簿和旧版 JSON 导入兼容继续保留。包名 `cn.suizhang.ledger.debug`、最低 Android 10/API 29。**公开仓库只同步源码和文档，不包含 APK 或用户私有账本数据。**公式与税务边界见 [`FORMULA_ALIGNMENT_1.4.3.md`](FORMULA_ALIGNMENT_1.4.3.md)，前序数据迁移说明见 [`UPGRADE_1.4.12.md`](UPGRADE_1.4.12.md)，设计准则见 [`DESIGN.md`](DESIGN.md)，已知问题见 [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md)。
+
+## 2.0 界面预览
+
+![总览页示意（方向 1）](docs/images/2.0-ui-preview/overview-direction-1.png)
+
+> 界面示意，股票/金额为虚构示例数据。以上为静态原型，不是应用实际运行截图。
+
+其他已选页面（方向 2）：[持仓示意](docs/images/2.0-ui-preview/holdings-direction-2.png) · [日历示意](docs/images/2.0-ui-preview/calendar-direction-2.png) · [更多示意](docs/images/2.0-ui-preview/more-direction-2.png)。这些页面同样是界面示意，股票/金额为虚构示例数据。
 
 ## 主要功能
 
