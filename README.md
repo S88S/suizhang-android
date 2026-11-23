@@ -14,7 +14,7 @@
 
 ### Android 实际运行截图（2.0.1）
 
-本版尚未完成应用页面运行验收，目前没有实际运行截图。已尝试在无硬件加速环境启动 Android 15 / API 35 TCG 模拟器；首次安装时 Android PackageInstaller 因系统服务 `PackageManagerInternal.freeStorage` 空指针失败，应用未成功安装/运行，因此没有可交付的应用运行画面。静态设计稿不作为运行截图。
+本版尚未完成应用页面运行验收，目前没有实际运行截图。此前的 Android 15 / API 35 TCG 模拟器在安装 `app-debug.apk` 时因系统服务 `PackageManagerInternal.freeStorage` 空指针失败。另一次新建、隔离的 API 35 AVD 在启动前即被 Emulator 37.3 拒绝：此环境缺少 `/dev/kvm`，而 x86_64 仿真要求硬件加速。两次都没有进入应用，未产出实际运行画面；静态设计稿不作为运行截图。
 
 ## 主要功能
 
