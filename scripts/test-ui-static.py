@@ -33,7 +33,7 @@ require("年度查询保留账户筛选并将年份绑定为四位值", 'String.
 require("年度总览显示 12 个月明细且可跳转月历", 'for (int monthIndex = 1; monthIndex <= 12; monthIndex++)' in calendar and 'month = monthIndex' in calendar and 'calendarYearView = false' in calendar)
 require("年度趋势按币种分别归一化，不合并币种", 'summary.maxMonthlyTotal(currency)' in calendar and '按币种分别统计，不做汇率换算' in calendar)
 require("已到账和预计/待收有文字与颜色双重区分", '已到账' in calendar and '预计 / 待收' in calendar and 'app_calendar_received' in calendar and 'app_calendar_estimated' in calendar)
-require("日历事件用三色圆点配完整图例与日期读屏说明", "calendarMarkerDot(markerColors[ti], 6, selected)" in calendar and 'calendarLegendItem("股权登记"' in calendar and 'calendarLegendItem("除权除息"' in calendar and 'calendarLegendItem("派息日"' in calendar and "calendarTypes(types)" in calendar and "markerLabels" not in calendar)
+require("日历事件用三色圆点配可筛选图例与日期读屏说明", "calendarMarkerDot(markerColors[ti], 6, selected)" in calendar and 'chip.setText((hidden ? "@" : "") + names[at])' in calendar and '"股权登记"' in calendar and '"除权除息"' in calendar and '"派息日"' in calendar and "calendarHiddenTypes.contains(typeIds[at])" in calendar and "calendarEventVisible(e, cur, ym)" in calendar and "calendarTypes(types)" in calendar and "markerLabels" not in calendar)
 require("月/年导航使用本地 chevron 图标并保留可访问名称和边界守卫", 'calendarNavButton(R.drawable.ic_chevron_left_24, "上一年"' in calendar and 'calendarNavButton(R.drawable.ic_chevron_right_24, "下一年"' in calendar and 'isSupportedYear(next)' in calendar and '回到今年' in calendar)
 require("年度视图提供空年度状态", '本年度暂无收息事件' in calendar and 'summary.hasEvents()' in calendar)
 

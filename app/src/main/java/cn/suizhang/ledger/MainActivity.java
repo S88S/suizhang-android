@@ -123,6 +123,10 @@ public class MainActivity extends AppCompatActivity {
     /** Last quote-refresh warning, kept so the holdings page can show why prices are missing. */
     private String quoteWarning;
     private final Map<String, Boolean> moreSectionExpanded = new HashMap<>();
+    /** 更多页「证券与交易」里最近流水是否展开；与更多页折叠一样跨旋转保留。 */
+    private final Map<String, Boolean> transactionListExpanded = new HashMap<>();
+    /** 日历事件类型筛选：点掉某类图例后，事件明细只显示其余类型；与息记的分红日期筛选 chip 同机制。 */
+    private final Set<String> calendarHiddenTypes = new HashSet<>();
     private long lastQuoteRefresh;
     private String lastQuoteSignature = "";
     private LinearLayout shell, content;
@@ -159,6 +163,7 @@ public class MainActivity extends AppCompatActivity {
             for (String sectionId : MORE_SECTION_IDS) {
                 moreSectionExpanded.put(sectionId, savedInstanceState.getBoolean("ui_more_section_" + sectionId, false));
             }
+            transactionListExpanded.put("recent_transactions", savedInstanceState.getBoolean("ui_transactions_expanded", false));
         }
         darkMode = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
         lastWidthDp = getResources().getConfiguration().screenWidthDp;
@@ -214,6 +219,7 @@ public class MainActivity extends AppCompatActivity {
         for (String sectionId : MORE_SECTION_IDS) {
             outState.putBoolean("ui_more_section_" + sectionId, moreSectionExpanded.getOrDefault(sectionId, false));
         }
+        outState.putBoolean("ui_transactions_expanded", transactionListExpanded.getOrDefault("recent_transactions", false));
         super.onSaveInstanceState(outState);
     }
     private void loadColors() {
@@ -1082,16 +1088,34 @@ private void showHome() {
     }
 
     /** 三色圆点图例（登记 / 除息 / 派息），用完整名称而非缩写。 */
-    /** 三色图例：小圆点 + 名称，居中等分，不抢视觉重量。 */
+    /** 三色图例做成筛选 chip：对齐息记的 @股权登记 / @除权除息 / @派息日，点掉某类只显示其余事件。 */
     private LinearLayout calendarLegendRow() {
         LinearLayout legend = row();
         legend.setGravity(Gravity.CENTER);
-        legend.addView(calendarLegendItem("股权登记", getColor(R.color.app_calendar_record_date)),
-                new LinearLayout.LayoutParams(0, -2, 1));
-        legend.addView(calendarLegendItem("除权除息", getColor(R.color.app_calendar_ex_date)),
-                new LinearLayout.LayoutParams(0, -2, 1));
-        legend.addView(calendarLegendItem("派息日", getColor(R.color.app_calendar_pay_date)),
-                new LinearLayout.LayoutParams(0, -2, 1));
+        String[] names = {"股权登记", "除权除息", "派息日"};
+        String[] typeIds = {"record_date", "ex_date", "pay_date"};
+        int[] colorIds = {R.color.app_calendar_record_date, R.color.app_calendar_ex_date, R.color.app_calendar_pay_date};
+        for (int index = 0; index < names.length; index++) {
+            final int at = index;
+            boolean hidden = calendarHiddenTypes.contains(typeIds[at]);
+            int color = getColor(colorIds[at]);
+            MaterialButton chip = new MaterialButton(this); chip.setText((hidden ? "@" : "") + names[at]); chip.setTextSize(10); chip.setAllCaps(false);
+            chip.setTypeface(Typeface.create(appTypeface, Typeface.BOLD)); chip.setInsetTop(0); chip.setInsetBottom(0); chip.setInsetLeft(0); chip.setInsetRight(0);
+            chip.setMinHeight(dimen(R.dimen.ds_touch_target_min)); chip.setMinimumHeight(dimen(R.dimen.ds_touch_target_min));
+            chip.setCornerRadius(Math.max(0, dimen(R.dimen.ds_control_group_radius) - dp(4)));
+            chip.setIconResource(R.drawable.ic_event_note_24); chip.setIconSize(dp(12)); chip.setIconPadding(dp(3));
+            chip.setIconGravity(MaterialButton.ICON_GRAVITY_TEXT_START);
+            chip.setIconTint(ColorStateList.valueOf(hidden ? LINE : color));
+            chip.setTextColor(hidden ? MUTED : INK);
+            chip.setBackgroundTintList(ColorStateList.valueOf(android.graphics.Color.TRANSPARENT));
+            chip.setStrokeWidth(dp(1)); chip.setStrokeColor(ColorStateList.valueOf(hidden ? LINE : color));
+            chip.setContentDescription("事件筛选：" + names[at] + (hidden ? "，已隐藏这类分红事件，点按恢复显示" : "，当前显示这类分红事件，点按隐藏"));
+            chip.setOnClickListener(v -> {
+                if (!calendarHiddenTypes.remove(typeIds[at])) calendarHiddenTypes.add(typeIds[at]);
+                render();
+            });
+            legend.addView(chip, new LinearLayout.LayoutParams(0, dimen(R.dimen.ds_touch_target_min), 1));
+        }
         return legend;
     }
 
@@ -1217,20 +1241,36 @@ private void showHome() {
         return cal;
     }
 
-    /** 选中日（或整月）的分红事件明细；无事件时给出下一步提示。 */
+    /** 选中日（或整月）的分红事件明细；无事件时给出下一步提示；被图例筛掉的事件不在列表里出现。 */
     private void calendarEventList(YearMonth cur, String ym, JSONArray events) {
         String selectedDate = selectedDay == null ? "本月派息事件" : String.format(Locale.US, "%04d-%02d-%02d", cur.getYear(), cur.getMonthValue(), selectedDay);
         content.addView(text(selectedDate, 15, INK, true), margin(0, 2, 0, 6));
         boolean shown = false;
         for (int i = 0; i < events.length(); i++) {
             JSONObject e = events.optJSONObject(i); if (e == null) continue;
+            if (!calendarEventVisible(e, cur, ym)) continue;
             String kinds = selectedDay == null ? (e.optString("pay_date").startsWith(ym) ? "派息日" : "") : calendarKinds(e, cur.getYear(), cur.getMonthValue(), selectedDay);
             if (!kinds.isEmpty()) { addDividendRow(e, true, kinds); shown = true; }
         }
         if (!shown) {
             String emptyMessage = selectedDay == null ? "本月没有派息日期记录；登记日或除息日仍会在日历格中标记。" : "所选日期没有分红事件。可先更新公开数据，或手工录入；来源不可用时不影响账本。";
+            if (!calendarHiddenTypes.isEmpty()) emptyMessage += "（已隐藏 " + calendarHiddenTypes.size() + " 类事件，点上方图例可恢复）";
             content.addView(text(emptyMessage, 12, MUTED, false), margin(0, 6, 0, 12));
         }
+    }
+
+    /** 图例筛选后的可见性：按该事件命中的类型判断，命中的类型都被筛掉就不显示这一行。 */
+    private boolean calendarEventVisible(JSONObject e, YearMonth cur, String ym) {
+        if (selectedDay == null) {
+            return !calendarHiddenTypes.contains("pay_date") && e.optString("pay_date").startsWith(ym);
+        }
+        String kinds = calendarKinds(e, cur.getYear(), cur.getMonthValue(), selectedDay);
+        if (kinds.isEmpty()) return false;
+        for (String part : kinds.split(" / ")) {
+            String typeId = part.endsWith("登记日") ? "record_date" : part.endsWith("除息日") ? "ex_date" : part.endsWith("派息日") ? "pay_date" : "";
+            if (!typeId.isEmpty() && !calendarHiddenTypes.contains(typeId)) return true;
+        }
+        return false;
     }
 
     /** 底部同步/手工录入操作行；大字或窄屏改为纵向排列并加高，避免文字被截断。 */
@@ -1342,6 +1382,7 @@ private void showHome() {
         yearHead.addView(titleBox, new LinearLayout.LayoutParams(0, -2, 1));
         yearHead.addView(calendarNavButton(R.drawable.ic_chevron_right_24, "下一年", () -> shiftYear(1)), new LinearLayout.LayoutParams(dp(48), dp(48)));
         content.addView(yearHead, margin(0, 0, 0, 8));
+        content.addView(calendarLegendRow(), margin(0, 0, 0, 4));
 
         JSONArray rows = db.dividendsInYear(selectedAccount, year); ArrayList<CalendarYearSummary.Event> source = new ArrayList<>();
         if (rows != null) for (int i = 0; i < rows.length(); i++) {
@@ -1377,9 +1418,9 @@ private void showHome() {
         boolean shown = false;
         for (int i = 0; i < monthEvents.length(); i++) {
             JSONObject e = monthEvents.optJSONObject(i);
-            if (e != null && e.optString("pay_date").startsWith(ym)) { addDividendRow(e, true, "派息日"); shown = true; }
+            if (e != null && !calendarHiddenTypes.contains("pay_date") && e.optString("pay_date").startsWith(ym)) { addDividendRow(e, true, "派息日"); shown = true; }
         }
-        if (!shown) content.addView(text("本月没有派息日期记录；股权登记或除权日仍可能显示在月度统计中。", 12, MUTED, false), margin(0, 5, 0, 12));
+        if (!shown) content.addView(text("本月没有派息日期记录；股权登记或除权日仍可能显示在月度统计中。" + (calendarHiddenTypes.isEmpty() ? "" : "（已隐藏 " + calendarHiddenTypes.size() + " 类事件，点上方图例恢复）"), 12, MUTED, false), margin(0, 5, 0, 12));
     }
 
     private void addCalendarYearMonth(CalendarYearSummary summary, int monthIndex, GridLayout monthGrid) {
@@ -1988,17 +2029,31 @@ private void showHome() {
         } catch (Exception e) { return "无法读取许可文件：" + path; }
     }
     private void showTransactions() {
-        sectionHeader("最近交易流水", "新增交易", () -> showTransactionDialog(0, 0)); JSONArray transactions = db.transactions(selectedAccount, 25);
-        if (transactions.length() == 0) content.addView(text("还没有交易记录。买入/卖出会重算加权成本，并用于 A 股持有期税率估算。", 11, MUTED, false), margin(1, 0, 0, 6));
+        boolean expanded = transactionListExpanded.getOrDefault("recent_transactions", false);
+        CardColumn card = card(); card.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout header = row(); header.setGravity(Gravity.CENTER_VERTICAL); header.setPadding(dp(2), dp(3), dp(2), dp(3));
+        TextView title = text(expanded ? "最近交易流水 · 收起" : "最近交易流水（最近 25 笔）· 展开", 13, INK, true);
+        title.setPadding(dp(4), 0, dp(6), 0); title.setFocusable(true);
+        title.setContentDescription("展开或收起最近交易流水，当前" + (expanded ? "已展开" : "已收起"));
+        title.setOnClickListener(v -> { transactionListExpanded.put("recent_transactions", !expanded); render(); });
+        header.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView add = text("＋ 新增交易", 12, ACCENT, true); add.setPadding(dp(8), dp(4), dp(8), dp(4)); add.setFocusable(true);
+        add.setContentDescription("新增买入卖出交易记录"); add.setOnClickListener(v -> showTransactionDialog(0, 0));
+        header.addView(add, new LinearLayout.LayoutParams(-2, -2));
+        card.addView(header);
+        if (!expanded) { content.addView(card, margin(0, 0, 0, 10)); return; }
+        JSONArray transactions = db.transactions(selectedAccount, 25);
+        if (transactions.length() == 0) card.addView(text("还没有交易记录。买入/卖出会重算加权成本，并用于 A 股持有期税率估算。", 11, MUTED, false), margin(1, 6, 0, 0));
         for (int i = 0; i < transactions.length(); i++) {
             JSONObject t = transactions.optJSONObject(i); if (t == null) continue; CardColumn item = card(); item.setOrientation(LinearLayout.VERTICAL);
             LinearLayout top = row(); top.setGravity(Gravity.CENTER_VERTICAL);
             top.addView(text(t.optString("side"), 12, INK, true), new LinearLayout.LayoutParams(dp(42), -2));
             top.addView(text(t.optString("holding_name") + " · " + LedgerFormats.shortDate(t.optString("trade_date")) + " · " + compact(t.optDouble("quantity")) + " × " + LedgerFormats.amount("", t.optDouble("price")), 11, INK, false), new LinearLayout.LayoutParams(0, -2, 1));
-            item.addView(top); content.addView(item, margin(0, 3, 0, 4));
-            content.addView(editDeleteRow(() -> showTransactionDialog(0, t.optLong("_id")),
+            item.addView(top); card.addView(item, margin(0, 3, 0, 4));
+            card.addView(editDeleteRow(() -> showTransactionDialog(0, t.optLong("_id")),
                     () -> confirmDeleteTransaction(t)), margin(62, 0, 0, 7));
         }
+        content.addView(card, margin(0, 0, 0, 10));
     }
     private void showBoundaries() {
         CardColumn c = card(); c.setOrientation(LinearLayout.VERTICAL); c.addView(text("重要口径与边界", 15, INK, true));
@@ -3041,15 +3096,6 @@ private void showHome() {
         public void setOrientation(int orientation) { body.setOrientation(orientation); }
         public void setGravity(int gravity) { body.setGravity(gravity); }
         @Override public void setPadding(int left, int top, int right, int bottom) { if (body == null) super.setPadding(left, top, right, bottom); else body.setPadding(left, top, right, bottom); }
-    }
-    private View calendarLegendItem(String label, int color) {
-        LinearLayout item = row(); item.setGravity(Gravity.CENTER);
-        View dot = calendarMarkerDot(color, 8, false);
-        LinearLayout.LayoutParams dotParams = new LinearLayout.LayoutParams(dp(8), dp(8));
-        dotParams.setMargins(dp(1), 0, dp(5), 0); item.addView(dot, dotParams);
-        TextView title = text(label, 10, MUTED, true); title.setGravity(Gravity.CENTER);
-        item.addView(title, new LinearLayout.LayoutParams(-2, -2));
-        return item;
     }
     private View calendarMarkerDot(int color, int sizeDp, boolean selected) {
         View marker = new View(this);
