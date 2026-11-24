@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 穗账图标背景：取 app_primary（浅色主题暖麦金） -->
+    <color name="ic_launcher_background">#8A5E0B</color>
+</resources>
