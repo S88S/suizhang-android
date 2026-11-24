@@ -73,5 +73,5 @@ require("权限清单只有网络与通知两项，通知权限供 WorkManager �
         "android.permission.INTERNET" in manifest
         and "android.permission.POST_NOTIFICATIONS" in manifest
         and manifest.count("uses-permission") == 2)
-require("本轮版本升级至 2.0.1 / code 29", "versionName '2.0.1'" in build and "versionCode 29" in build)
+require("本轮版本升级至 2.0.2 / code 30", "versionName '2.0.2'" in build and "versionCode 30" in build)
 print("通过：东方财富截图导入路径源码/结构回归完成；源码检查不替代 Android 设备目视测试。")
