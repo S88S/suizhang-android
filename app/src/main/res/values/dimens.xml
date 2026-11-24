@@ -10,7 +10,7 @@
     <dimen name="ds_card_inset_vertical">14dp</dimen>
     <dimen name="ds_compact_card_inset_vertical">12dp</dimen>
     <dimen name="ds_hero_inset_horizontal">20dp</dimen>
-    <dimen name="ds_hero_inset_vertical">14dp</dimen>
+    <dimen name="ds_hero_inset_vertical">12dp</dimen>
     <dimen name="ds_home_heading_gap">8dp</dimen>
     <dimen name="ds_line_spacing_body">3dp</dimen>
     <dimen name="ds_line_spacing_compact">2dp</dimen>

@@ -37,9 +37,9 @@ import android.util.Log;
 import android.util.TypedValue;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.FrameLayout;
 import android.widget.GridLayout;
-import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -98,6 +98,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String HOME_METRIC_SETTING = "home_metrics";
     private static final String HOME_METRIC_DEFAULTS = "cost_yield,market_yield,floating_profit,net_invested,holding_count,profit_rate";
     private static final int HOME_METRIC_LIMIT = 6;
+    private static final String[] MORE_SECTION_IDS = {"account_backup", "tax_stats", "securities_transactions", "privacy_licenses"};
     private static final String[] HOME_METRIC_IDS = {"cost_yield", "market_yield", "floating_profit", "net_invested", "holding_count", "profit_rate", "received_year", "total_cost", "market_value", "monthly_forecast", "daily_forecast", "cumulative_received"};
     private static final String[] HOME_METRIC_LABELS = {"成本股息率", "市值股息率", "浮动盈亏", "净投入", "持仓只数", "盈亏率", "今年已收", "总成本", "总市值", "月均预测分红", "日均预测分红", "累计收益"};
     private static final String[] HOME_METRIC_FORMULAS = {
@@ -121,6 +122,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean quoteRefreshInFlight;
     /** Last quote-refresh warning, kept so the holdings page can show why prices are missing. */
     private String quoteWarning;
+    private final Map<String, Boolean> moreSectionExpanded = new HashMap<>();
     private long lastQuoteRefresh;
     private String lastQuoteSignature = "";
     private LinearLayout shell, content;
@@ -128,7 +130,7 @@ public class MainActivity extends AppCompatActivity {
     private long selectedAccount = 0;
     private int year = LocalDate.now().getYear(), month = LocalDate.now().getMonthValue();
     private Integer selectedDay = LocalDate.now().getDayOfMonth();
-    private boolean calendarYearView;
+    private boolean calendarYearView = true;
     private boolean taxNet;
     private boolean darkMode;
     private int lastWidthDp = -1, lastHeightDp = -1;
@@ -153,7 +155,10 @@ public class MainActivity extends AppCompatActivity {
             month = savedInstanceState.getInt("ui_calendar_month", month);
             int savedDay = savedInstanceState.getInt("ui_calendar_day", 0);
             selectedDay = savedDay > 0 ? savedDay : null;
-            calendarYearView = savedInstanceState.getBoolean("ui_calendar_year_view", false);
+            calendarYearView = savedInstanceState.getBoolean("ui_calendar_year_view", true);
+            for (String sectionId : MORE_SECTION_IDS) {
+                moreSectionExpanded.put(sectionId, savedInstanceState.getBoolean("ui_more_section_" + sectionId, false));
+            }
         }
         darkMode = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
         lastWidthDp = getResources().getConfiguration().screenWidthDp;
@@ -206,6 +211,9 @@ public class MainActivity extends AppCompatActivity {
         outState.putInt("ui_calendar_month", month);
         outState.putInt("ui_calendar_day", selectedDay == null ? 0 : selectedDay);
         outState.putBoolean("ui_calendar_year_view", calendarYearView);
+        for (String sectionId : MORE_SECTION_IDS) {
+            outState.putBoolean("ui_more_section_" + sectionId, moreSectionExpanded.getOrDefault(sectionId, false));
+        }
         super.onSaveInstanceState(outState);
     }
     private void loadColors() {
@@ -382,18 +390,43 @@ public class MainActivity extends AppCompatActivity {
         nav.setTitleSize(navLabelSp());
         nav.setIconSize(dp(22));
         nav.setBackgroundColor(getColor(R.color.app_surface));
-        nav.check("holdings".equals(activeTab) ? R.id.nav_holdings : "calendar".equals(activeTab) ? R.id.nav_calendar : ("more".equals(activeTab) || "stats".equals(activeTab) || "plan".equals(activeTab)) ? R.id.nav_more : R.id.nav_home);
+        int selectedItem = "holdings".equals(activeTab) ? R.id.nav_holdings : "calendar".equals(activeTab) ? R.id.nav_calendar : ("more".equals(activeTab) || "stats".equals(activeTab) || "plan".equals(activeTab)) ? R.id.nav_more : R.id.nav_home;
+        nav.check(selectedItem);
+        applyBottomNavigationSelection(nav, selectedItem);
         nav.setOnItemSelectedListener((item, fromUser) -> {
-            int selectedItem = item.getId();
-            if (selectedItem == R.id.nav_holdings) activeTab = "holdings";
-            else if (selectedItem == R.id.nav_calendar) activeTab = "calendar";
-            else if (selectedItem == R.id.nav_more) activeTab = "more";
+            int targetItem = item.getId();
+            if (targetItem == R.id.nav_holdings) activeTab = "holdings";
+            else if (targetItem == R.id.nav_calendar) activeTab = "calendar";
+            else if (targetItem == R.id.nav_more) activeTab = "more";
             else activeTab = "home";
             render();
             return true;
         });
         nav.setContentDescription("主要页面导航");
         return nav;
+    }
+
+    private void applyBottomNavigationSelection(MiuixBottomNavigatorView nav, int selectedItemId) {
+        int selectedColor = getColor(R.color.app_primary);
+        int idleColor = getColor(R.color.app_on_surface_variant);
+        for (int index = 0; index < nav.getChildCount(); index++) {
+            View item = nav.getChildAt(index);
+            if (!(item instanceof ViewGroup)) continue;
+            boolean selected = item.getId() == selectedItemId;
+            item.setSelected(selected);
+            ViewGroup itemGroup = (ViewGroup) item;
+            View icon = itemGroup.getChildAt(0);
+            if (icon instanceof ImageView) {
+                ((ImageView) icon).setColorFilter(selected ? selectedColor : idleColor, android.graphics.PorterDuff.Mode.SRC_IN);
+            }
+            View label = itemGroup.getChildAt(1);
+            if (label instanceof TextView) {
+                TextView title = (TextView) label;
+                title.setTextColor(selected ? selectedColor : idleColor);
+                title.setTypeface(Typeface.create(appTypeface, selected ? Typeface.BOLD : Typeface.NORMAL));
+                item.setContentDescription(title.getText() + (selected ? "，已选中" : "，未选中"));
+            }
+        }
     }
 
     /**
@@ -415,7 +448,7 @@ private void showHome() {
         titleParams.topMargin = dimen(R.dimen.ds_home_heading_gap);
         homeHeading.addView(homeTitle, titleParams);
         LinearLayout.LayoutParams headingParams = new LinearLayout.LayoutParams(-1, -2);
-        headingParams.topMargin = dp(2); headingParams.bottomMargin = dp(8);
+        headingParams.topMargin = dp(2); headingParams.bottomMargin = dimen(R.dimen.ds_space_micro);
         content.addView(homeHeading, headingParams);
         JSONArray hs = db.holdings(selectedAccount);
         Map<String, Double> annual = estimatedIncomeByCurrency(false); Map<String, Double> costs = costByCurrency();
@@ -440,9 +473,18 @@ private void showHome() {
             addHeroDivider(hero);
             addOverviewMetricGrid(hero, metricIds, metricValues);
         }
-        content.addView(heroSurface, margin(0, 4, 0, 8));
+        content.addView(heroSurface, margin(0, 4, 0, 4));
 
-        sectionHeader("持仓预计年分红", "查看全部持仓", () -> { activeTab = "holdings"; render(); });
+        sectionHeader("接下来收息", "看日历", () -> { activeTab = "calendar"; render(); });
+        JSONArray next = db.nextDividends(selectedAccount, LocalDate.now().toString(), 3);
+        if (next.length() == 0) content.addView(text("尚无未来已录入派息事件；可在分红日历查看记录。", 12, MUTED, false), margin(0, 3, 0, 10));
+        else {
+            CardColumn upcoming = card(); upcoming.setOrientation(LinearLayout.VERTICAL);
+            for (int i = 0; i < next.length(); i++) addHomeNextDividend(upcoming, next.optJSONObject(i), i == next.length() - 1);
+            content.addView(upcoming, margin(0, 0, 0, 8));
+        }
+
+        sectionHeader("主要分红来源", "全部持仓", () -> { activeTab = "holdings"; render(); });
         if (hs.length() == 0) {
             emptyInfoCard("还没有持仓", "新增持仓后，这里会显示分红估算与后续收息安排。可从右下角加号开始。");
         } else {
@@ -452,11 +494,6 @@ private void showHome() {
             for (int i = 0; i < Math.min(4, ranked.size()); i++) addHomeHoldingCard(ranked.get(i));
             if (ranked.size() > 4) content.addView(text("还有 " + (ranked.size() - 4) + " 项持仓，查看全部列表。", 11, MUTED, false), margin(2, 0, 0, 6));
         }
-
-        sectionHeader("下一笔预期", "分红日历", () -> { activeTab = "calendar"; render(); });
-        JSONArray next = db.nextDividends(selectedAccount, LocalDate.now().toString(), 3);
-        if (next.length() == 0) content.addView(text("尚无未来已录入派息事件；可在分红日历查看记录。", 12, MUTED, false), margin(0, 3, 0, 10));
-        else for (int i = 0; i < next.length(); i++) addDividendRow(next.optJSONObject(i), false);
     }
 
     private MaterialButton overviewMetricSettingsButton(int selectedCount) {
@@ -470,6 +507,30 @@ private void showHome() {
         button.setBackgroundTintList(ColorStateList.valueOf(android.graphics.Color.TRANSPARENT)); button.setStrokeWidth(0);
         button.setContentDescription("设置总览指标，已选择 " + selectedCount + " 项，最多 " + HOME_METRIC_LIMIT + " 项");
         button.setOnClickListener(v -> showOverviewMetricSettings()); return button;
+    }
+
+    private void addHomeNextDividend(ViewGroup host, JSONObject e, boolean last) {
+        if (e == null) return;
+        String payDate = e.optString("pay_date"); LocalDate dateValue = LedgerFormats.parseDate(payDate);
+        boolean approximate = "1".equals(e.optString("pay_date_estimated")) || e.optInt("pay_date_estimated") == 1;
+        String dateLabel = (approximate ? "约 " : "") + (dateValue == null ? "日期待核对" : dateValue.format(DateTimeFormatter.ofPattern("M月d日", Locale.CHINA)));
+        String statusLabel = DividendCalendarRules.statusLabel(e.optString("data_class", "manual"), e.optString("status", "expected"));
+        String currency = e.optString("currency", "CNY");
+        String holdingName = e.optString("holding_name", e.optString("holding_code", "持仓"));
+
+        LinearLayout item = row(); item.setGravity(Gravity.CENTER_VERTICAL);
+        TextView date = tokenText(dateLabel, R.dimen.ds_type_metadata, getColor(R.color.app_on_primary_container), true); date.setGravity(Gravity.CENTER); date.setMinWidth(dp(54));
+        date.setPadding(dp(4), dp(7), dp(4), dp(7)); date.setBackground(roundPx(PRIMARY_CONTAINER, dimen(R.dimen.ds_event_badge_radius), 0, 0));
+        item.addView(date);
+        LinearLayout details = new LinearLayout(this); details.setOrientation(LinearLayout.VERTICAL); details.setPadding(dp(9), 0, dp(7), 0);
+        TextView name = tokenText(holdingName, R.dimen.ds_type_body, INK, true);
+        details.addView(name); details.addView(tokenText("预计记录额 · " + statusLabel, R.dimen.ds_type_metadata, MUTED, false), margin(0, 2, 0, 0));
+        item.addView(details, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView value = tokenText(LedgerFormats.amount(currency, e.optDouble("total")), R.dimen.ds_type_data_value, DIVIDEND, true);
+        value.setGravity(Gravity.END | Gravity.CENTER_VERTICAL); value.setFontFeatureSettings("tnum"); value.setSingleLine(false); value.setMaxWidth(dp(112));
+        item.addView(value, new LinearLayout.LayoutParams(-2, -2));
+        host.addView(item);
+        if (!last) host.addView(divider());
     }
 
     private void addHeroDivider(LinearLayout hero) {
@@ -798,7 +859,17 @@ private void showHome() {
 
     private void showHoldings() {
         JSONArray hs = db.holdings(selectedAccount);
-        content.addView(text(accountScopeLabel(), 11, MUTED, false), margin(1, 0, 1, 4));
+        Map<String, Double> currencyMarketValues = marketValueByCurrency(hs);
+        ArrayList<JSONObject> ranked = new ArrayList<>();
+        for (int i = 0; i < hs.length(); i++) { JSONObject holding = hs.optJSONObject(i); if (holding != null) ranked.add(holding); }
+        Collections.sort(ranked, (a, b) -> {
+            double annualB = annualOf(b, false), annualA = annualOf(a, false);
+            if (!Double.isFinite(annualB)) annualB = 0d;
+            if (!Double.isFinite(annualA)) annualA = 0d;
+            return Double.compare(annualB, annualA);
+        });
+
+        content.addView(tokenText(accountScopeLabel(), R.dimen.ds_type_metadata, MUTED, false), margin(1, 0, 1, 4));
         content.addView(actionButtonRow(actionButton("新增持仓", false, () -> showHoldingQuickActions()),
                 actionButton("更多操作", false, this::showHoldingsMoreActions)), margin(0, 0, 0, 8));
         if (hs.length() == 0) { emptyInfoCard("还没有持仓记录", "可在上方选择手动新增，或从券商截图识别；行情与分红源不可用时仍可本地记账。"); return; }
@@ -813,9 +884,8 @@ private void showHome() {
             warn.addView(retry, new LinearLayout.LayoutParams(Math.max(dimen(R.dimen.ds_touch_target_min), Math.min(dp(120), retryWidth)), -2));
             content.addView(warn, margin(0, 0, 0, 8));
         }
-        Map<String, Double> currencyMarketValues = marketValueByCurrency(hs);
-        for (int i = 0; i < hs.length(); i++) {
-            JSONObject h = hs.optJSONObject(i); CardColumn item = card(); item.setOrientation(LinearLayout.VERTICAL);
+        for (JSONObject h : ranked) {
+            CardColumn item = card(); item.setOrientation(LinearLayout.VERTICAL);
             MarketDataClient.Quote quote = quoteFor(h);
             LinearLayout top = row(); top.setGravity(Gravity.CENTER_VERTICAL); top.addView(text(h.optString("name"), 16, INK, true), new LinearLayout.LayoutParams(0, -2, 1));
             TextView tag = text(h.optString("market") + " · " + h.optString("currency"), 10, ACCENT, true); tag.setPadding(dp(8), dp(5), dp(8), dp(5)); tag.setBackground(roundPx(PRIMARY_CONTAINER, dimen(R.dimen.ds_market_badge_radius), 0, 0)); top.addView(tag); item.addView(top);
@@ -1253,11 +1323,11 @@ private void showHome() {
         MaterialButton button = new MaterialButton(this); button.setText(label); button.setTextSize(12); button.setAllCaps(false);
         button.setInsetTop(0); button.setInsetBottom(0); button.setInsetLeft(0); button.setInsetRight(0);
         button.setMinHeight(dimen(R.dimen.ds_touch_target_min)); button.setMinimumHeight(dimen(R.dimen.ds_touch_target_min));
-        button.setMinWidth(dimen(R.dimen.ds_touch_target_min)); button.setMinimumWidth(dimen(R.dimen.ds_touch_target_min)); button.setGravity(Gravity.CENTER);
+        button.setMinWidth(dimen(R.dimen.ds_touch_target_min)); button.setMinimumWidth(dimen(R.dimen.ds_touch_target_min)); button.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL);
         button.setIconResource(iconResource); button.setIconSize(dp(16)); button.setIconPadding(dp(4)); button.setIconGravity(MaterialButton.ICON_GRAVITY_TEXT_START);
         button.setIconTint(ColorStateList.valueOf(getColor(R.color.app_primary))); button.setTextColor(getColor(R.color.app_primary));
         button.setBackgroundTintList(ColorStateList.valueOf(android.graphics.Color.TRANSPARENT)); button.setStrokeWidth(0);
-        button.setPaddingRelative(dp(4), 0, dp(4), 0);
+        button.setPaddingRelative(dp(4), dimen(R.dimen.ds_space_micro), dp(4), 0);
         button.setContentDescription(description); button.setOnClickListener(v -> action.run()); return button;
     }
 
@@ -1266,7 +1336,9 @@ private void showHome() {
         yearHead.addView(calendarNavButton(R.drawable.ic_chevron_left_24, "上一年", () -> shiftYear(-1)), new LinearLayout.LayoutParams(dp(48), dp(48)));
         LinearLayout titleBox = new LinearLayout(this); titleBox.setOrientation(LinearLayout.VERTICAL); titleBox.setGravity(Gravity.CENTER);
         TextView title = text(year + " 年", 18, INK, true); title.setGravity(Gravity.CENTER); titleBox.addView(title);
-        MaterialButton current = calendarContextButton("回到今年", R.drawable.ic_today_24, "回到今年", () -> { year = LocalDate.now().getYear(); calendarYearView = true; render(); }); titleBox.addView(current);
+        MaterialButton current = calendarContextButton("回到今年", R.drawable.ic_today_24, "回到今年", () -> { year = LocalDate.now().getYear(); calendarYearView = true; render(); });
+        LinearLayout.LayoutParams currentParams = new LinearLayout.LayoutParams(-2, dimen(R.dimen.ds_touch_target_min));
+        currentParams.topMargin = dimen(R.dimen.ds_space_micro); titleBox.addView(current, currentParams);
         yearHead.addView(titleBox, new LinearLayout.LayoutParams(0, -2, 1));
         yearHead.addView(calendarNavButton(R.drawable.ic_chevron_right_24, "下一年", () -> shiftYear(1)), new LinearLayout.LayoutParams(dp(48), dp(48)));
         content.addView(yearHead, margin(0, 0, 0, 8));
@@ -1286,40 +1358,59 @@ private void showHome() {
                     () -> confirmMarkReceivedBatch(rows)), margin(0, 8, 0, 0));
             overview.addView(text("只把状态改为已到账，不填写实收金额，因此不会触发分红摊薄成本。金额仍需在月历逐笔补录。", 10, MUTED, false), margin(0, 5, 0, 0));
         }
-        content.addView(overview, margin(0, 0, 0, 10));
-
+        content.addView(text("月度现金流", 15, INK, true), margin(0, 2, 0, 5));
         LinearLayout legend = row(); legend.setGravity(Gravity.CENTER_VERTICAL);
         legend.addView(text("■ 已到账", 10, getColor(R.color.app_calendar_received), true));
         legend.addView(text("    ■ 预计 / 待收", 10, getColor(R.color.app_calendar_estimated), true));
         content.addView(legend, margin(2, 0, 0, 6));
-        content.addView(text("12 个月收息明细", 15, INK, true), margin(0, 2, 0, 5));
-        if (!summary.hasEvents()) {
-            content.addView(text("本年度暂无收息事件。可切回月历选择月份，查看登记、除息与派息日期。", 12, MUTED, false), margin(0, 6, 0, 12));
+        if (!summary.hasEvents()) content.addView(text("本年度暂无收息事件；仍可选择月份查看派息记录。", 12, MUTED, false), margin(0, 4, 0, 6));
+        GridLayout monthGrid = new GridLayout(this); monthGrid.setColumnCount(3); monthGrid.setUseDefaultMargins(false);
+        for (int monthIndex = 1; monthIndex <= 12; monthIndex++) addCalendarYearMonth(summary, monthIndex, monthGrid);
+        content.addView(monthGrid, margin(0, 0, 0, 8));
+        content.addView(overview, margin(0, 0, 0, 10));
+
+        CalendarYearSummary.Month selectedSummary = summary.month(month);
+        String ym = String.format(Locale.US, "%04d-%02d", year, month);
+        JSONArray monthEvents = db.dividends(selectedAccount, ym); if (monthEvents == null) monthEvents = new JSONArray();
+        content.addView(text(month + "月派息安排", 15, INK, true), margin(0, 4, 0, 2));
+        content.addView(text(calendarMonthSpeech(selectedSummary), 11, MUTED, false), margin(0, 2, 0, 6));
+        boolean shown = false;
+        for (int i = 0; i < monthEvents.length(); i++) {
+            JSONObject e = monthEvents.optJSONObject(i);
+            if (e != null && e.optString("pay_date").startsWith(ym)) { addDividendRow(e, true, "派息日"); shown = true; }
         }
-        for (int monthIndex = 1; monthIndex <= 12; monthIndex++) addCalendarYearMonth(summary, monthIndex);
+        if (!shown) content.addView(text("本月没有派息日期记录；股权登记或除权日仍可能显示在月度统计中。", 12, MUTED, false), margin(0, 5, 0, 12));
     }
 
-    private void addCalendarYearMonth(CalendarYearSummary summary, int monthIndex) {
+    private void addCalendarYearMonth(CalendarYearSummary summary, int monthIndex, GridLayout monthGrid) {
         CalendarYearSummary.Month monthSummary = summary.month(monthIndex);
-        CardColumn monthCard = card(); monthCard.setOrientation(LinearLayout.VERTICAL); monthCard.setPadding(dp(12), dp(10), dp(12), dp(10));
-        LinearLayout heading = row(); heading.setGravity(Gravity.CENTER_VERTICAL);
-        TextView label = text(monthIndex + " 月", 14, INK, true); heading.addView(label, new LinearLayout.LayoutParams(0, dp(36), 1));
-        TextView open = text("查看月历", 11, ACCENT, true); open.setGravity(Gravity.CENTER); open.setMinHeight(dp(48));
-        setStartIcon(open, R.drawable.ic_nav_calendar, ACCENT, 16); open.setContentDescription("打开" + year + "年" + monthIndex + "月月历"); heading.addView(open);
-        monthCard.addView(heading);
+        boolean selected = monthIndex == month;
+        CardColumn monthCard = card(); monthCard.setOrientation(LinearLayout.VERTICAL); monthCard.setPadding(dp(8), dp(8), dp(8), dp(8));
+        monthCard.setMinimumHeight(dp(78)); monthCard.setRadius(dimen(R.dimen.ds_calendar_cell_radius));
+        monthCard.setCardBackgroundColor(getColor(selected ? R.color.app_primary_container : R.color.app_surface));
+        monthCard.setCardElevation(selected ? dp(2) : dimen(R.dimen.ds_card_elevation));
+        GradientDrawable monthOutline = roundPx(android.graphics.Color.TRANSPARENT, dimen(R.dimen.ds_calendar_cell_radius), getColor(R.color.app_outline), selected ? dp(1) : 0);
+        TextView label = text(monthIndex + "月", 13, selected ? getColor(R.color.app_on_primary_container) : INK, true);
+        label.setGravity(Gravity.START | Gravity.CENTER_VERTICAL); monthCard.addView(label);
         if (monthSummary.currencyCodes().isEmpty()) {
-            monthCard.addView(text("暂无事件", 11, MUTED, false), margin(0, 2, 0, 0));
+            monthCard.addView(tokenText("暂无派息记录", R.dimen.ds_type_secondary, MUTED, false), margin(0, 3, 0, 0));
         } else {
             for (String currency : monthSummary.currencyCodes()) {
                 CalendarYearSummary.Amounts amounts = monthSummary.amounts(currency);
-                monthCard.addView(text(currency + "  已到账 " + LedgerFormats.amount(currency, amounts.received) + "  ·  预计 / 待收 " + LedgerFormats.amount(currency, amounts.estimated), 10, INK, false), margin(0, 1, 0, 0));
+                int amountColor = selected ? getColor(R.color.app_on_primary_container) : INK;
+                monthCard.addView(tokenText(currency, R.dimen.ds_type_metadata, selected ? getColor(R.color.app_on_primary_container) : MUTED, true), margin(0, 1, 0, 0));
+                monthCard.addView(tokenText("已到账 " + LedgerFormats.amount(currency, amounts.received), R.dimen.ds_type_metadata, amountColor, false), margin(0, 1, 0, 0));
+                monthCard.addView(tokenText("预计 / 待收 " + LedgerFormats.amount(currency, amounts.estimated), R.dimen.ds_type_metadata, amountColor, false), margin(0, 1, 0, 0));
                 monthCard.addView(calendarAmountBar(amounts, summary.maxMonthlyTotal(currency)), margin(0, 3, 0, 4));
             }
         }
-        monthCard.setClickable(true); monthCard.setFocusable(true); monthCard.setForeground(new android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(getColor(R.color.app_primary_container)), null, roundDp(android.graphics.Color.WHITE, 12, 0, 0)));
-        monthCard.setContentDescription(year + "年" + monthIndex + "月，" + monthSummary.eventCount() + "项收息事件，" + calendarMonthSpeech(monthSummary) + "，点按查看月历");
-        monthCard.setOnClickListener(v -> { year = summary.year; month = monthIndex; selectedDay = null; calendarYearView = false; render(); });
-        content.addView(monthCard, margin(0, 0, 0, 6));
+        monthCard.setClickable(true); monthCard.setFocusable(true); monthCard.setSelected(selected);
+        monthCard.setForeground(new android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(getColor(R.color.app_secondary)), monthOutline, roundDp(android.graphics.Color.WHITE, 12, 0, 0)));
+        monthCard.setContentDescription(year + "年" + monthIndex + "月，" + monthSummary.eventCount() + "项收息事件，" + calendarMonthSpeech(monthSummary) + (selected ? "，已选中" : "，点按选择并查看派息明细"));
+        monthCard.setOnClickListener(v -> { year = summary.year; month = monthIndex; selectedDay = null; calendarYearView = true; render(); });
+        GridLayout.LayoutParams params = new GridLayout.LayoutParams(); params.width = 0; params.height = -2;
+        params.columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f); params.setMargins(dp(3), dp(3), dp(3), dp(3));
+        monthGrid.addView(monthCard, params);
     }
 
     /** Counts dividends whose pay date has arrived and are still expected, so future payouts are excluded. */
@@ -1713,14 +1804,82 @@ private void showHome() {
     }
 
     private void showMore() {
-        showAccountCard(); showTaxSettingsCard();
-        CardColumn stats = card(); stats.setOrientation(LinearLayout.VERTICAL); stats.addView(text("统计报表", 16, INK, true));
-        stats.addView(text("预计年分红、成本 YoC、日/月均收入、累计已收与贡献排行；成本不等于市值。", 12, MUTED, false), margin(0, 5, 0, 10));
-        stats.addView(actionButton("打开统计报表", true, () -> { activeTab = "stats"; render(); })); content.addView(stats, margin(0, 0, 0, 10));
-        CardColumn plan = card(); plan.setOrientation(LinearLayout.VERTICAL); plan.addView(text("复利与开支目标", 16, INK, true));
-        plan.addView(text("按固定年化参数测算复利，并跟踪股息对生活开支的覆盖；情景测算不代表实际收益。", 12, MUTED, false), margin(0, 5, 0, 10));
-        plan.addView(actionButton("打开复利与开支目标", true, () -> { activeTab = "plan"; render(); })); content.addView(plan, margin(0, 0, 0, 10));
-        showCatalogCard(); showBackupCard(); showOpenSourceCard(); showTransactions(); showBoundaries();
+        CardColumn localStatus = card(); localStatus.setOrientation(LinearLayout.VERTICAL);
+        localStatus.addView(text("本地优先", 15, INK, true));
+        localStatus.addView(text("账本数据保存在本机；证券搜索、行情与分红更新仅在对应操作时请求公开数据。", 11, MUTED, false), margin(0, 4, 0, 0));
+        content.addView(localStatus, margin(0, 0, 0, 10));
+
+        moreDisclosureSection("account_backup", "账户与备份", () -> {
+            showAccountCard();
+            showBackupCard();
+        });
+        moreDisclosureSection("tax_stats", "税务与统计规划", () -> {
+            showTaxSettingsCard();
+            CardColumn stats = card(); stats.setOrientation(LinearLayout.VERTICAL); stats.addView(text("统计与规划", 16, INK, true));
+            stats.addView(moreActionRow("统计报表", "查看持仓、分红预估与历史到账", () -> { activeTab = "stats"; render(); }));
+            stats.addView(divider());
+            stats.addView(moreActionRow("复利与开支目标", "复利情景与股息开支覆盖", () -> { activeTab = "plan"; render(); }));
+            content.addView(stats, margin(0, 0, 0, 10));
+        });
+        moreDisclosureSection("securities_transactions", "证券与交易", () -> {
+            showCatalogCard();
+            showTransactions();
+        });
+        moreDisclosureSection("privacy_licenses", "隐私与许可", () -> {
+            showBoundaries();
+            showOpenSourceCard();
+        });
+    }
+    private void moreDisclosureSection(String sectionId, String title, Runnable buildContent) {
+        boolean expanded = moreSectionExpanded.getOrDefault(sectionId, false);
+        LinearLayout section = new LinearLayout(this); section.setOrientation(LinearLayout.VERTICAL);
+        MaterialButton toggle = actionButton(title, false, () -> { });
+        toggle.setTextSize(TypedValue.COMPLEX_UNIT_PX, getResources().getDimension(R.dimen.ds_type_section_title));
+        toggle.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+        toggle.setPadding(dp(16), 0, dp(16), 0);
+        toggle.setBackgroundTintList(ColorStateList.valueOf(getColor(R.color.app_surface)));
+        toggle.setTextColor(INK);
+        toggle.setStrokeColor(ColorStateList.valueOf(getColor(R.color.app_outline)));
+        toggle.setRippleColor(ColorStateList.valueOf(getColor(R.color.app_secondary)));
+        toggle.setIconResource(expanded ? R.drawable.ic_expand_more_24 : R.drawable.ic_chevron_right_24);
+        toggle.setIconGravity(MaterialButton.ICON_GRAVITY_END);
+        toggle.setIconTint(ColorStateList.valueOf(getColor(R.color.app_primary)));
+        toggle.setIconPadding(dp(8));
+        toggle.setMinimumHeight(dimen(R.dimen.ds_touch_target_min));
+        toggle.setContentDescription(title + (expanded ? "，已展开，双击收起" : "，已收起，双击展开"));
+        toggle.setOnClickListener(v -> {
+            boolean next = !moreSectionExpanded.getOrDefault(sectionId, false);
+            moreSectionExpanded.put(sectionId, next);
+            render();
+        });
+
+        LinearLayout body = new LinearLayout(this); body.setOrientation(LinearLayout.VERTICAL);
+        body.setVisibility(expanded ? View.VISIBLE : View.GONE);
+        if (expanded) {
+            // Existing card builders append to content; direct their output into this section body.
+            LinearLayout pageContent = content;
+            content = body;
+            try {
+                buildContent.run();
+            } finally {
+                content = pageContent;
+            }
+        }
+        section.addView(toggle, new LinearLayout.LayoutParams(-1, -2));
+        section.addView(body, margin(0, 4, 0, 0));
+        content.addView(section, margin(0, 0, 0, 10));
+    }
+    private LinearLayout moreActionRow(String title, String description, Runnable action) {
+        LinearLayout actionRow = row(); actionRow.setGravity(Gravity.CENTER_VERTICAL); actionRow.setPadding(dp(2), dp(7), dp(2), dp(7));
+        actionRow.setMinimumHeight(dimen(R.dimen.ds_touch_target_min));
+        LinearLayout copy = new LinearLayout(this); copy.setOrientation(LinearLayout.VERTICAL); copy.setPadding(dp(4), 0, dp(6), 0);
+        copy.addView(text(title, 14, INK, true)); copy.addView(text(description, 11, MUTED, false), margin(0, 2, 0, 0));
+        actionRow.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
+        ImageView chevron = new ImageView(this); chevron.setImageResource(R.drawable.ic_chevron_right_24); chevron.setColorFilter(getColor(R.color.app_primary));
+        chevron.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO); actionRow.addView(chevron, new LinearLayout.LayoutParams(dp(20), dp(20)));
+        actionRow.setClickable(true); actionRow.setFocusable(true); actionRow.setContentDescription(title + "，" + description);
+        actionRow.setForeground(new android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(getColor(R.color.app_primary_container)), null, roundDp(android.graphics.Color.WHITE, 12, 0, 0)));
+        actionRow.setOnClickListener(v -> action.run()); return actionRow;
     }
     private void showStatsPage() {
         pageTitle("统计报表", "按用户账本与税务设置估算；公开行情用于持仓市值参考"); addTaxToggle();
@@ -2519,6 +2678,7 @@ private void showHome() {
         EditText payDate = dateEdit(LocalDate.now().toString(), false), recordDate = dateEdit("", true), exDate = dateEdit("", true); MiuixListView status = spinner(new String[]{"预计", "已到账"}); EditText note = edit("", "备注（可选）");
         TextView estimate = text("金额按当前数量估算；实际到账额请以券商记录为准。", 10, ACCENT, false);
         EditText actualReceived = numberEdit("", "可选；按券商实际入账填写");
+        LinearLayout actualReceivedField = field("实际到账金额（可选，仅已到账时）", actualReceived);
         Runnable update = () -> {
             JSONObject h = selectedJson(holding); if (h == null) return;
             double gross = parseNumber(perShare) * h.optDouble("quantity"); String taxDate = blankToNull(recordDate.getText().toString());
@@ -2535,8 +2695,12 @@ private void showHome() {
             note.setText(existing.optString("note"));
             if (!existing.isNull("received_amount")) actualReceived.setText(LedgerFormats.plain(existing.optDouble("received_amount")));
         }
-        actualReceived.setVisibility("已到账".equals(selectedItem(status)) ? View.VISIBLE : View.GONE);
+        DividendReceivedAmountState receivedState = new DividendReceivedAmountState(
+                "已到账".equals(selectedItem(status)) ? DividendReceivedAmountState.RECEIVED : DividendReceivedAmountState.EXPECTED,
+                actualReceived.getText().toString());
+        actualReceivedField.setVisibility(DividendReceivedAmountState.RECEIVED.equals(receivedState.statusForSave()) ? View.VISIBLE : View.GONE);
         perShare.addTextChangedListener(new TextWatcher() { public void beforeTextChanged(CharSequence s, int st, int c, int a) {} public void onTextChanged(CharSequence s, int st, int before, int count) { update.run(); } public void afterTextChanged(Editable e) {} });
+        actualReceived.addTextChangedListener(new TextWatcher() { public void beforeTextChanged(CharSequence s, int st, int c, int a) {} public void onTextChanged(CharSequence s, int st, int before, int count) { receivedState.setActualAmount(s.toString()); } public void afterTextChanged(Editable e) {} });
         setSelectorListener(holding, new OnChooseItemListener() {
             @Override public boolean onChooseBefore(CharSequence item, int which) { return true; }
             @Override public void onChooseAfter(CharSequence[] items, CharSequence[] selectedItems, Integer[] selectedValues) { update.run(); }
@@ -2544,16 +2708,41 @@ private void showHome() {
         setSelectorListener(status, new OnChooseItemListener() {
             @Override public boolean onChooseBefore(CharSequence item, int which) { return true; }
             @Override public void onChooseAfter(CharSequence[] items, CharSequence[] selectedItems, Integer[] selectedValues) {
-                actualReceived.setVisibility("已到账".equals(selectedItem(status)) ? View.VISIBLE : View.GONE);
+                boolean received = "已到账".equals(selectedItem(status));
+                boolean needsConfirmation = receivedState.requestStatus(received ? DividendReceivedAmountState.RECEIVED : DividendReceivedAmountState.EXPECTED);
+                if (needsConfirmation) {
+                    selectSpinner(status, "已到账");
+                    actualReceivedField.setVisibility(View.VISIBLE);
+                    Runnable restoreReceived = () -> {
+                        receivedState.cancelExpectedChange();
+                        selectSpinner(status, "已到账");
+                        actualReceived.setText(receivedState.actualAmountForSave());
+                        actualReceivedField.setVisibility(View.VISIBLE);
+                    };
+                    AlertDialog confirmation = new MaterialAlertDialogBuilder(MainActivity.this)
+                            .setTitle("清除实际到账金额？")
+                            .setMessage("切换为预计会清除这笔实际到账金额。")
+                            .setNegativeButton("取消并保留金额", (dialog, which) -> restoreReceived.run())
+                            .setPositiveButton("清空并改为预计", (dialog, which) -> {
+                                receivedState.confirmExpectedChange();
+                                actualReceived.setText(receivedState.actualAmountForSave());
+                                selectSpinner(status, "预计");
+                                actualReceivedField.setVisibility(View.GONE);
+                            }).create();
+                    confirmation.setOnCancelListener(dialog -> restoreReceived.run());
+                    confirmation.show();
+                    return;
+                }
+                actualReceivedField.setVisibility(received ? View.VISIBLE : View.GONE);
             }
         });
-        LinearLayout f = form(); f.addView(field("关联持仓", holding)); f.addView(field("每股/每份分红金额", perShare)); f.addView(estimate, margin(3, -1, 0, 5)); f.addView(field("派息日", payDate)); f.addView(field("登记日（可选）", recordDate)); f.addView(field("除息日（可选）", exDate)); f.addView(field("状态", status)); f.addView(field("实际到账金额（可选，仅已到账时）", actualReceived)); f.addView(field("备注", note));
+        LinearLayout f = form(); f.addView(field("关联持仓", holding)); f.addView(field("每股/每份分红金额", perShare)); f.addView(estimate, margin(3, -1, 0, 5)); f.addView(field("派息日", payDate)); f.addView(field("登记日（可选）", recordDate)); f.addView(field("除息日（可选）", exDate)); f.addView(field("状态", status)); f.addView(actualReceivedField); f.addView(field("备注", note));
         AlertDialog d = new MaterialAlertDialogBuilder(this).setTitle(existing == null ? "添加分红事件" : "编辑分红事件").setView(wrapForm(f)).setNegativeButton("取消", null).setPositiveButton("保存", null).create();
         d.setOnShowListener(v -> d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(b -> { JSONObject h = selectedJson(holding); double p = parseNumber(perShare); LocalDate date = LedgerFormats.parseDate(payDate.getText().toString());
-            if (h == null || p <= 0) { perShare.setError("分红金额需大于 0"); return; } if (date == null) { payDate.setError("请选择有效日期"); return; }
-            String state = "已到账".equals(selectedItem(status)) ? "received" : "expected"; String taxDate = blankToNull(recordDate.getText().toString()); if (taxDate == null) taxDate = LocalDate.now().toString();
+        if (h == null || p <= 0) { perShare.setError("分红金额需大于 0"); return; } if (date == null) { payDate.setError("请选择有效日期"); return; }
+            String state = receivedState.statusForSave(); String taxDate = blankToNull(recordDate.getText().toString()); if (taxDate == null) taxDate = LocalDate.now().toString();
             double rate = effectiveTaxRate(h, taxDate); boolean known = taxEstimateKnown(h, taxDate);
-            String actualText = actualReceived.getText().toString().trim(); Double actual = null;
+            String actualText = receivedState.actualAmountForSave(); Double actual = null;
             if (!actualText.isEmpty()) { try { actual = Double.parseDouble(actualText); } catch (NumberFormatException ignored) { actual = -1d; } }
             if (actual != null && (!Double.isFinite(actual) || actual < 0d)) { actualReceived.setError("实际到账金额不能为负或无效"); return; }
             if (actual != null && !"received".equals(state)) { actualReceived.setError("请先将状态设为已到账"); return; }

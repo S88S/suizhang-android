@@ -41,6 +41,5 @@ require("日历仍在到账概况中说明实收与待收金额口径", '本月�
 require("无视觉根页标题时仍设置 TalkBack 页面上下文", 'content.setAccessibilityPaneTitle(accessibilityPaneTitle())' in render and 'return "持仓"' in main and 'return "日历"' in main and 'return "更多"' in main)
 require("系统栏、挖孔、手势区和 IME inset 被应用到根布局", 'WindowCompat.setDecorFitsSystemWindows(getWindow(), false)' in main and 'Type.systemBars()' in main and 'Type.displayCutout()' in main and 'Type.systemGestures()' in main and 'Type.ime()' in main and 'SOFT_INPUT_ADJUST_RESIZE' in main)
 require("日历滚动区保留底部可达空间且不裁切 padding", 'scroller.setClipToPadding(false)' in render and 'dp("home".equals(activeTab) ? 96 : 32)' in render)
-require("版本只升级到 1.4.12 / code 26", "versionName '1.4.12'" in build and re.search(r"versionCode\s+26\b", build) is not None)
-require("包名不变且数据库 schema 升至 5", "applicationId 'cn.suizhang.ledger'" in build and "applicationIdSuffix '.debug'" in build and re.search(r"DB_VERSION\s*=\s*5", database) is not None and 'android:name=".MainActivity"' in manifest)
+require("版本升级到 2.0.1 / code 29，包名保持不变且数据库 schema 为 5", "versionName '2.0.1'" in build and re.search(r"versionCode\s+29\b", build) is not None and "applicationId 'cn.suizhang.ledger'" in build and "applicationIdSuffix '.debug'" in build and re.search(r"DB_VERSION\s*=\s*5", database) is not None and 'android:name=".MainActivity"' in manifest)
 print("通过：compact-tabs 源码级回归完成；insets、字体缩放和末周可达性仍需设备屏幕验收。")

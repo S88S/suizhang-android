@@ -77,13 +77,16 @@ require("Excel 写入的 schema 版本取自数据库常量，不再硬编码 4"
         and 'root.put("schema_version", 4)' not in excel)
 
 # --- network ---
+gradle_version = re.search(r"(?m)^\s*versionName\s+'([^']+)'", gradle)
+client_version = re.search(r'(?m)^\s*static final String APP_VERSION = "([^"]+)";', client)
 require("行情请求分批，不再把所有代码拼进一个 URL",
         "QUOTE_BATCH_SIZE" in client and "start += QUOTE_BATCH_SIZE" in client)
-require("User-Agent 版本号不再停在 1.3，且与 Gradle 版本一致",
+require("User-Agent 版本号与 Gradle versionName 一致",
         "APP_VERSION" in client
         and 'Suizhang-Android/" + APP_VERSION' in client
-        and 'APP_VERSION = "1.4.12"' in client
-        and "versionName '1.4.12'" in gradle)
+        and gradle_version is not None
+        and client_version is not None
+        and client_version.group(1) == gradle_version.group(1))
 require("HTTP 错误带上响应体片段，不再只有一个状态码",
         "errorBody(connection)" in client and "getErrorStream()" in client)
 require("连接禁用缓存", "setUseCaches(false)" in client)
