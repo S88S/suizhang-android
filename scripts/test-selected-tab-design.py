@@ -28,10 +28,11 @@ year_view = section("private void showCalendarYear()", "private int countPending
 calendar = section("private void showCalendar()", "private CardColumn calendarControlPanel()")
 more = section("private void showMore()", "private LinearLayout moreActionRow(")
 
-forecast = home.find('LocalDate.now().getYear() + " 年预计分红"')
+monthly_forecast = home.find('"月均预计分红"')
+annual_forecast = home.find('LocalDate.now().getYear() + " 年预计总额"')
 next_cashflow = home.find('sectionHeader("接下来收息"')
 major_holdings = home.find('sectionHeader("主要分红来源"')
-require("总览顺序为年度预估、近期收息、主要分红来源", forecast >= 0 and next_cashflow > forecast and major_holdings > next_cashflow)
+require("总览顺序为月均预计分红、年度总额、近期收息、主要分红来源", 0 <= monthly_forecast < annual_forecast < next_cashflow < major_holdings)
 require("总览近期事件使用真实派息记录并紧凑呈现日期、标的与金额", "db.nextDividends(selectedAccount" in home and "addHomeNextDividend" in home and all(token in home_event for token in ("pay_date", "holding_name", "currency", "total")))
 require("近期收息标的不被不可恢复地单行截断", "name.setMaxLines(1)" not in home_event and "name.setEllipsize" not in home_event)
 require("近期收息金额不设固定行数上限或省略", "value.setMaxLines(" not in home_event and "value.setEllipsize" not in home_event)
@@ -53,7 +54,7 @@ require("更多页统计与规划通过紧凑入口保留原功能", all(token i
 require("更多页账户、税务、证券搜索、Excel备份及许可/流水入口保留", all(token in more for token in ("showAccountCard()", "showTaxSettingsCard()", "showCatalogCard()", "showBackupCard()", "showOpenSourceCard()", "showTransactions()", "showBoundaries()")))
 require("更多页分组涵盖账户/备份、税务/规划、证券/交易与隐私/许可", all(token in more for token in ("账户与备份", "税务与统计规划", "证券与交易", "隐私与许可")))
 
-require("Debug 安装包升至 versionCode 29", "versionName '2.0.1'" in BUILD and re.search(r"versionCode\s+29\b", BUILD) is not None)
-require("README 同步标注 versionCode 29 且设计文档更新总览顺序", "versionCode 29" in README and '"下一笔预期"' not in DESIGN[DESIGN.index('"home_reading_order"'):DESIGN.index('"holding_metrics"')])
+require("Debug 安装包升至 versionCode 30", "versionName '2.0.2'" in BUILD and re.search(r"versionCode\s+30\b", BUILD) is not None)
+require("README 同步标注 versionCode 30 且设计文档记录月均优先顺序", "versionCode 30" in README and '"月均预计分红"' in DESIGN[DESIGN.index('"home_reading_order"'):DESIGN.index('"holding_metrics"')])
 
 print("通过：选定方向的主要 Tab 层级与版本回归；不替代设备视觉验收。")

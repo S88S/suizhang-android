@@ -22,7 +22,7 @@ stats = section("private void showStatsPage()", "private void showStats()")
 
 for name, body in (("总览", home), ("持仓", holdings), ("日历", calendar)):
     require(f"{name}不再放置税前/税后显眼切换", "addTaxToggle" not in body and "setTaxView" not in body)
-require("总览使用单一预计年分红毛额并单独突出金额", 'estimatedIncomeByCurrency(false)' in home and 'LocalDate.now().getYear() + " 年预计分红"' in home and 'hasEstimate ? LedgerFormats.formatAmounts(annual) : "暂无数据"' in home)
+require("总览月均优先、年度总额次之，月均按年度多币种估算除以12", 'estimatedIncomeByCurrency(false)' in home and 'LocalDate.now().getYear() + " 年预计总额"' in home and 'scaleMap(annual, 1d / 12d)' in home and 'LedgerFormats.formatAmounts(scaleMap(annual, 1d / 12d))' in home and home.index('"月均预计分红"') < home.index('LocalDate.now().getYear() + " 年预计总额"'))
 require("持仓卡片仅显示预计年分红单一口径", '预计年分红  ' in holdings and 'YoC' in holdings)
 require("统计页仍沿用旧税务显示偏好", "addTaxToggle();" in stats and 'tax_display' in source and "saveSetting(\"tax_display\"" in source)
 
@@ -39,7 +39,7 @@ require("年度视图提供空年度状态", '本年度暂无收息事件' in ca
 
 require("总览用右下角 FAB 取代通栏新增按钮", 'FloatingActionButton addHolding' in source and 'Gravity.END | Gravity.BOTTOM' in source and 'actionButton("＋ 新增持仓", true' not in home)
 require("FAB 菜单保留手动新增与券商截图识别", '"手动新增持仓", "识别券商截图"' in source and 'showHoldingEditor(null, null)' in source and 'chooseBrokerScreenshot()' in source)
-require("首页按年分红预估、近期收息、主要分红来源的顺序呈现", 'estimatedIncomeByCurrency(false)' in home and 'sectionHeader("接下来收息"' in home and 'sectionHeader("主要分红来源"' in home and home.index('sectionHeader("接下来收息"') < home.index('sectionHeader("主要分红来源"') and 'Math.min(4, ranked.size())' in home)
+require("首页依次呈现月均分红、年度总额、近期收息与主要分红来源", 'estimatedIncomeByCurrency(false)' in home and 'sectionHeader("接下来收息"' in home and 'sectionHeader("主要分红来源"' in home and home.index('"月均预计分红"') < home.index('LocalDate.now().getYear() + " 年预计总额"') < home.index('sectionHeader("接下来收息"') < home.index('sectionHeader("主要分红来源"') and 'Math.min(4, ranked.size())' in home)
 require("持仓分红卡片呈现来源和股息收益信息且未知值不写作零", 'forecastSourceLabel(holding)' in home and '"暂无数据"' in home and 'gross > 0d ? LedgerFormats.amount(holding.optString("currency"), gross)' in home)
 require("首页近期收息使用紧凑行且保留日历链接", 'sectionHeader("接下来收息", "看日历"' in home and 'db.nextDividends(selectedAccount' in home and 'addHomeNextDividend' in home)
 require("无持仓状态不重复显示新增按钮", 'emptyInfoCard("还没有持仓"' in home and 'emptyInfoCard("还没有持仓记录"' in holdings)

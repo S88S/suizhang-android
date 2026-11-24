@@ -467,14 +467,25 @@ private void showHome() {
         heroTop.addView(text(overviewHoldingDuration(hs), 11, HERO_MUTED, false), new LinearLayout.LayoutParams(0, -2, 1));
         heroTop.addView(overviewMetricSettingsButton(metricIds.size())); hero.addView(heroTop);
         addHeroDivider(hero);
-        LinearLayout heading = row(); heading.addView(tokenText(LocalDate.now().getYear() + " 年预计分红", R.dimen.ds_type_body, HERO_MUTED, true), new LinearLayout.LayoutParams(0, -2, 1)); heading.addView(text("本地估算", 11, HERO_MUTED, false)); hero.addView(heading);
-        TextView annualValue = tokenText(hasEstimate ? LedgerFormats.formatAmounts(annual) : "暂无数据", R.dimen.ds_type_hero_metric,
+        String annualText = hasEstimate ? LedgerFormats.formatAmounts(annual) : "暂无数据";
+        String monthlyText = hasEstimate ? LedgerFormats.formatAmounts(scaleMap(annual, 1d / 12d)) : "暂无数据";
+        LinearLayout monthlyHeading = row();
+        monthlyHeading.addView(tokenText("月均预计分红", R.dimen.ds_type_body, HERO_MUTED, true), new LinearLayout.LayoutParams(0, -2, 1));
+        monthlyHeading.addView(text("本地估算", 11, HERO_MUTED, false)); hero.addView(monthlyHeading);
+        TextView monthlyValue = tokenText(monthlyText, R.dimen.ds_type_hero_metric,
                 hasEstimate ? getColor(R.color.app_dividend_on_hero) : HERO_ON_SURFACE, true);
-        annualValue.setFontFeatureSettings("tnum"); annualValue.setMaxLines(3); hero.addView(annualValue);
-        String estimateNote = hasEstimate ? "月均参考  " + LedgerFormats.formatAmounts(scaleMap(annual, 1d / 12d))
+        monthlyValue.setFontFeatureSettings("tnum"); hero.addView(monthlyValue);
+        hero.addView(tokenText("按年度预估÷12均摊，仅作规划参考，不代表每月固定到账。", R.dimen.ds_type_metadata, HERO_MUTED, false), margin(0, 4, 0, 0));
+        LinearLayout annualRow = row(); annualRow.setGravity(Gravity.CENTER_VERTICAL);
+        annualRow.addView(tokenText(LocalDate.now().getYear() + " 年预计总额", R.dimen.ds_type_metadata, HERO_MUTED, false), new LinearLayout.LayoutParams(0, -2, 1));
+        TextView annualValue = tokenText(annualText, R.dimen.ds_type_data_value,
+                hasEstimate ? getColor(R.color.app_dividend_on_hero) : HERO_ON_SURFACE, true);
+        annualValue.setGravity(Gravity.END | Gravity.CENTER_VERTICAL); annualValue.setFontFeatureSettings("tnum");
+        annualRow.addView(annualValue, new LinearLayout.LayoutParams(0, -2, 1)); hero.addView(annualRow, margin(0, 4, 0, 0));
+        String estimateNote = hasEstimate
+                ? "按持仓数量与已录入/公开历史分红估算；币种分开展示，不换算，未来派息可能变化。"
                 : hs.length() == 0 ? "添加持仓后显示估算；未知金额不按 ¥0 计入。" : "持仓分红暂无可用估算；未知金额不会按 ¥0 计入。";
-        hero.addView(tokenText(estimateNote, R.dimen.ds_type_secondary, HERO_MUTED, false), margin(0, 4, 0, 0));
-        if (hasEstimate) hero.addView(tokenText("按持仓数量与已录入/公开历史分红估算；币种分开展示，不换算，未来派息可能变化。", R.dimen.ds_type_metadata, HERO_MUTED, false), margin(0, 4, 0, 0));
+        hero.addView(tokenText(estimateNote, R.dimen.ds_type_metadata, HERO_MUTED, false), margin(0, 4, 0, 0));
         if (!metricIds.isEmpty()) {
             addHeroDivider(hero);
             addOverviewMetricGrid(hero, metricIds, metricValues);
@@ -924,7 +935,24 @@ private void showHome() {
             buttons.addView(new View(this), new LinearLayout.LayoutParams(dp(8), 1)); buttons.addView(actionButton("更多", false, () -> holdingMenu(h)), new LinearLayout.LayoutParams(0, dp(48), 1));
             item.addView(buttons); item.setOnLongClickListener(v -> { holdingMenu(h); return true; }); content.addView(item, margin(0, 5, 0, 8));
         }
-        content.addView(text("浮动盈亏按最近已收盘行情减当前持仓成本；无行情时市值按成本估值且浮动盈亏不计。占比仅在同币种内计算，不将人民币、港币和美元直接相加；外币汇率折算尚未接入。", 11, MUTED, false), margin(2, 5, 0, 4));
+        TextView valuationNote = tokenText("浮动盈亏按最近已收盘行情减当前持仓成本；无行情时市值按成本估值且浮动盈亏不计。占比仅在同币种内计算，不将人民币、港币和美元直接相加；外币汇率折算尚未接入。", R.dimen.ds_type_secondary, MUTED, false);
+        valuationNote.setVisibility(View.GONE);
+        MaterialButton valuationToggle = actionButton("估值与币种说明", false, () -> { });
+        valuationToggle.setTextSize(TypedValue.COMPLEX_UNIT_PX, getResources().getDimension(R.dimen.ds_type_metadata));
+        valuationToggle.setGravity(Gravity.CENTER_VERTICAL | Gravity.START); valuationToggle.setPadding(dp(12), 0, dp(12), 0);
+        valuationToggle.setBackgroundTintList(ColorStateList.valueOf(getColor(R.color.app_surface)));
+        valuationToggle.setTextColor(MUTED); valuationToggle.setStrokeColor(ColorStateList.valueOf(getColor(R.color.app_outline)));
+        valuationToggle.setIconResource(R.drawable.ic_chevron_right_24); valuationToggle.setIconGravity(MaterialButton.ICON_GRAVITY_END);
+        valuationToggle.setIconTint(ColorStateList.valueOf(getColor(R.color.app_primary))); valuationToggle.setIconPadding(dp(8));
+        valuationToggle.setContentDescription("估值与币种说明，已收起，双击展开");
+        valuationToggle.setOnClickListener(v -> {
+            boolean expanded = valuationNote.getVisibility() != View.VISIBLE;
+            valuationNote.setVisibility(expanded ? View.VISIBLE : View.GONE);
+            valuationToggle.setIconResource(expanded ? R.drawable.ic_expand_more_24 : R.drawable.ic_chevron_right_24);
+            valuationToggle.setContentDescription("估值与币种说明，已" + (expanded ? "展开，双击收起" : "收起，双击展开"));
+        });
+        content.addView(valuationToggle, margin(0, 5, 0, 0));
+        content.addView(valuationNote, margin(2, 4, 0, 8));
         refreshQuotes(hs);
     }
 
@@ -1367,7 +1395,7 @@ private void showHome() {
         button.setIconResource(iconResource); button.setIconSize(dp(16)); button.setIconPadding(dp(4)); button.setIconGravity(MaterialButton.ICON_GRAVITY_TEXT_START);
         button.setIconTint(ColorStateList.valueOf(getColor(R.color.app_primary))); button.setTextColor(getColor(R.color.app_primary));
         button.setBackgroundTintList(ColorStateList.valueOf(android.graphics.Color.TRANSPARENT)); button.setStrokeWidth(0);
-        button.setPaddingRelative(dp(4), dimen(R.dimen.ds_space_micro), dp(4), 0);
+        button.setPaddingRelative(dp(4), 0, dp(4), 0);
         button.setContentDescription(description); button.setOnClickListener(v -> action.run()); return button;
     }
 
@@ -1378,7 +1406,7 @@ private void showHome() {
         TextView title = text(year + " 年", 18, INK, true); title.setGravity(Gravity.CENTER); titleBox.addView(title);
         MaterialButton current = calendarContextButton("回到今年", R.drawable.ic_today_24, "回到今年", () -> { year = LocalDate.now().getYear(); calendarYearView = true; render(); });
         LinearLayout.LayoutParams currentParams = new LinearLayout.LayoutParams(-2, dimen(R.dimen.ds_touch_target_min));
-        currentParams.topMargin = dimen(R.dimen.ds_space_micro); titleBox.addView(current, currentParams);
+        currentParams.topMargin = 0; titleBox.addView(current, currentParams);
         yearHead.addView(titleBox, new LinearLayout.LayoutParams(0, -2, 1));
         yearHead.addView(calendarNavButton(R.drawable.ic_chevron_right_24, "下一年", () -> shiftYear(1)), new LinearLayout.LayoutParams(dp(48), dp(48)));
         content.addView(yearHead, margin(0, 0, 0, 8));
